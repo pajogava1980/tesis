@@ -225,7 +225,9 @@ class PolicyIterationAgent:
             # Paso 2: Actualizar los valores de estado de manera mas eficiente
             for s in range(self.nS):
                 old_v = self.V[s]
+                # Evalúo la acción que indíca la política en s
                 self.V[s] = self.eval_state_action(s, self.policy[s])
+                # Máxima diferencia para el critério de parada
                 delta = max(delta, np.abs(old_v - self.V[s]))
                 print(f"State: {s}, Old V[s]: {old_v}, New V[s]: {self.V[s]},  Delta: {delta:.4f}") #Reward: {reward},
 
@@ -262,40 +264,28 @@ class PolicyIterationAgent:
         print(f"Imagen guardada en: {image_path}")
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
-    def eval_state_action(self, s, a):
+    def eval_state_action(self, s: int, a: int) -> float:
         """
-        Evalúa una acción en un estado dado utilizando Simulink y calcula la recompensa.
-        Args:
-            s (int): Estado actual.
-            a (int): Acción a evaluar.
-        Returns:
-            float: Valor esperado de la acción en el estado dado.
+        Devuelve Q(s,a) =  E[ r + γ·V(s') ] considerando que una misma
+        acción puede derivar en varios desenlaces (éxito, fallo, etc.).
+
+        1) Obtiene la lista de transiciones con self.mat_tran_gen(s, a):
+              (p, next_s, r, done)
+        2) Suma p·(r + γ·V[next_s]) en cada rama
+           • Si 'done' es True, no se añade el término futuro.
+        3) Retorna el valor esperado 'q_sa', que usa policy_evaluation
+           y policy_improvement..
         """
-        # 1. Determinar nueva posición de tap según la acción
-        delta_tap = self.acciones[a]                 # e.g. [-1,0,+1]
-        tap_nuevo = np.clip(s + delta_tap, 0, self.nS-1)
+        # 1. Transiciones estocásticas generadas por Simulink 
+        trans = self.mat_tran_gen(s, a)         #[(p, next_s, r, done)]
 
-        # 2. Fijar en Simulink y simular
-        self.eng.set_param('modelo', 'tap', tap_nuevo, nargout=0)
-        self.int_simple_simulink()
+        # 2. Esperanza matemática sobre todas las ramas 
+        q_sa = 0.0  #Inicia el acumulador 
+        for p, next_s, r, done in trans:
+            futuro = 0.0 if done else self.gamma * self.V[next_s]
+            q_sa += p * (r + futuro)
 
-        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
-
-
-
-        correc_s, Y_reg_end_range = estados_a_actualizar[s]
-        Y_reg_end =round((Y_reg_end_range[0] + Y_reg_end_range[1])/2,3)
-
-        # Actualizo los valores almacenados
-        self.tap_pos_val.append(self.get_tap_desde_state(correc_s))
-        self.Y_reg_val.append(Y_reg_end)
-
-        mat_tran = self.mat_tran_gen(s, a, Y_reg_end, estados_a_actualizar)
-        print(mat_tran)
-
-        v_fun = sum(p * (rew + (0 if done else self.gamma * self.V[next_s])) for p, next_s, rew, done in mat_tran)
-
-        return v_fun
+        return q_sa
     #--------------------------------------------------------------------------------------------------------------------
     def policy_improvement(self):
             """Evaluado policy_evaluation, el siguiente paso es mejorar la PI a PI', respondiendo la siguiente pregunta:
@@ -470,27 +460,44 @@ class PolicyIterationAgent:
                 print(f"Buffer vacío después de {intento + 1} intentos.")
                 break
             #intento += 1
-    #--------------------------------------------------------------------------------------------------------------------
-    def mat_tran_gen(self, s, a, Y_reg_end, estados_a_actualizar ):
+    # ------------------------------------------------------------------
+    # Paso 5 · Generador de transiciones estocásticas P(s,a)
+    # ------------------------------------------------------------------
+    
+    def mat_tran_gen(self, s: int, a: int):
         """
     Genera la matriz de transición `self.P[s][a]` ajustando las probabilidades 
     de transición en función de la acción aplicada al TAP y su impacto en el voltaje `Y_reg_end`.
-    Args:
-        s (int): Estado actual antes de aplicar la acción.
-        a (int): Acción aplicada al TAP (`-1`: bajar, `0`: mantener, `+1`: subir).
-        Y_reg_end (float): Voltaje antes de aplicar la acción.
-    Returns:
-        list: Lista de tuplas con la estructura [(probabilidad, next_s, rew, done)].
+    Devuelve una lista de tuplas (p, next_s, r, done) que describe
+        todas las ramificaciones posibles al ejecutar la acción `a`
+        desde el estado `s`.
 
-            Ejemplo de salida (`self.P[s][a]`):
-            ```
-            {
-                0: [(0.8, 2, 10, False), (0.2, 0, -1, False)],
-                1: [(0.1, 3, 15, False), (0.9, 1, -1, False)],
-                2: [(1.0, 2, 10, False), (0.0, 2, -1, False)]  # Si ya está en 0.99-1.00
-            }
-            ```
+        • Rama 1  (éxito)  -> prob = self.prob_satis
+        • Rama 2  (falla)  -> prob = 1 - self.prob_satis
+
+        Cada rama:
+          p         → probabilidad de ocurrir
+          next_s    → estado discreto alcanzado
+          r         → recompensa inmediata
+          done      → True si el episodio termina en esa rama
         """
+        transiciones = []
+
+        # Rama 1 Acción exitosa
+        # Calcula el tap destino  aplicando delta y acotando
+        delta_tap   = self.acciones[a]    # {-1, 0, +1}
+        tap_actual  = self.get_tap_desde_state(s)
+        tap_ok      = int(np.clip(tap_actual + delta_tap,
+                                    self.pos_min_tap,
+                                    self.pos_max_tap))
+        
+        # Fijo el TAP en Simulink y se simula 
+        
+
+
+
+
+
         #Paso 1 Incialización 
         correc_s, Y_reg_end = estados_a_actualizar [s]
         acciones_tap = {0: [-1, 0], 1: [1, 0], 2: [-1, 1]}            #0:bajar (-1),  1:subir (+1), 2:mantener (0),
