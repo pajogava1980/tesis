@@ -1,0 +1,1 @@
+set_param('AC_Feeder_Control', 'SimulationCommand', 'stop')
