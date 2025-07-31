@@ -225,7 +225,9 @@ class PolicyIterationAgent:
             # Paso 2: Actualizar los valores de estado de manera mas eficiente
             for s in range(self.nS):
                 old_v = self.V[s]
+                # Evalúo la acción que indíca la política en s
                 self.V[s] = self.eval_state_action(s, self.policy[s])
+                # Máxima diferencia para el critério de parada
                 delta = max(delta, np.abs(old_v - self.V[s]))
                 print(f"State: {s}, Old V[s]: {old_v}, New V[s]: {self.V[s]},  Delta: {delta:.4f}") #Reward: {reward},
 
@@ -265,6 +267,11 @@ class PolicyIterationAgent:
     def eval_state_action(self, s, a):
         """
         Evalúa una acción en un estado dado utilizando Simulink y calcula la recompensa.
+        - Fija el Tap en Simulink 
+        - Corre la simulación y obtine Y_reg_end
+        - Discretiza el siguiente estado s'
+        - Calcula la recompenza r
+        - Retorna E[r + y.V()]
         Args:
             s (int): Estado actual.
             a (int): Acción a evaluar.
@@ -273,25 +280,22 @@ class PolicyIterationAgent:
         """
         # 1. Determinar nueva posición de tap según la acción
         delta_tap = self.acciones[a]                 # e.g. [-1,0,+1]
+        # np.clip(x, a_min, a_max)
         tap_nuevo = np.clip(s + delta_tap, 0, self.nS-1)
 
         # 2. Fijar en Simulink y simular
         self.eng.set_param('modelo', 'tap', tap_nuevo, nargout=0)
         self.int_simple_simulink()
-
         self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
 
+        # 3 . Leer valor continuo y lo convierto a p.u.
+        Y_reg_end = self.matObj()
 
+        # 4. Discretizar el siguiente estado
+        s_prime = self.next_state(Y_reg_end)
 
-        correc_s, Y_reg_end_range = estados_a_actualizar[s]
-        Y_reg_end =round((Y_reg_end_range[0] + Y_reg_end_range[1])/2,3)
-
-        # Actualizo los valores almacenados
-        self.tap_pos_val.append(self.get_tap_desde_state(correc_s))
-        self.Y_reg_val.append(Y_reg_end)
-
-        mat_tran = self.mat_tran_gen(s, a, Y_reg_end, estados_a_actualizar)
-        print(mat_tran)
+        # 5. Calculo de la recompensa
+        r = self.calculo_reward(Y_reg_end)
 
         v_fun = sum(p * (rew + (0 if done else self.gamma * self.V[next_s])) for p, next_s, rew, done in mat_tran)
 
