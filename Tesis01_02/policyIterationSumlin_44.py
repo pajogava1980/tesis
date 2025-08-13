@@ -694,7 +694,7 @@ if __name__ == '__main__':
         eps = 7, # Tolerancia 1e-3
         eng = eng,
         host = '127.0.0.1',
-        port = 9096)  # Inicializo el agenteps = 0.01
+        port = 9096)  # Inicializo el agenteps = 0.
 
     # Ciclo principal
     try:
