@@ -95,9 +95,16 @@ class PolicyIterationAgent:
     """
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
-    def __init__(self, nS, nA, gamma, eps, eng, 
-                 prob_satis = 0.9, prob_falla = 0.7,  
-                 pausa = None, host = '127.0.0.1', port = 9096):
+    def __init__(self,
+                 nS,
+                 nA,
+                 gamma,
+                 eps, #Tolerancia 1e-3
+                 eng,
+                 prob_satis = 0.8,
+                 pausa = None,
+                 host = '127.0.0.1',
+                 port = 9096):
         """
         Inicializa el agente de iteración de políticas.
 
@@ -124,6 +131,12 @@ class PolicyIterationAgent:
         self.nS = nS
         self.nA = nA                                    #Por las acciones binarias... 0/1 siempre multiplo de 2
         self.gamma = gamma                              #Factor de descuento
+        if self.nA == 3:
+            self.acciones = {0:-1, 1:0, 2: +1}
+        elif self.nA == 2:
+            self.acciones = {0: -1, 1: +1}
+        else:
+            raise ValueError("Numero de acciones no soportadas")
         self.eps = eps
         self.eng = eng
 
@@ -133,7 +146,7 @@ class PolicyIterationAgent:
 
         # Probabilidad de transiciones
         self.prob_satis = prob_satis
-        self.prob_falla = prob_falla
+
 
          # Pausa basada en Simulink o valor por defecto
         if pausa is None:
@@ -186,27 +199,6 @@ class PolicyIterationAgent:
         sock.bind((self.udp_host, self.udp_port))
         return sock
     #--------------------------------------------------------------------------------------------------------------------
-    def obtener_estado_rango(self, s):
-        """Devuelve (min, max) de Y_reg para el estado s."""
-        # 1) Validación
-        if not 0 <= s < self.nS:
-            raise ValueError(f"Estado inválido: {s}. Debe estar en [0, {self.nS-1}]")
-        # 2) Rango manual de longitud nS = 33
-        Y_reg_ranges = [
-            (0.779, 0.788), (0.788, 0.797), (0.797, 0.806),
-            (0.806, 0.815), (0.815, 0.825), (0.825, 0.834),
-            (0.834, 0.844), (0.844, 0.852), (0.852, 0.862),
-            (0.862, 0.871), (0.871, 0.880), (0.880, 0.890),
-            (0.890, 0.899), (0.899, 0.908), (0.908, 0.917),
-            (0.917, 0.927), (0.927, 0.936), (0.936, 0.945),
-            (0.945, 0.955), (0.955, 0.964), (0.964, 0.973),
-            (0.973, 0.982), (0.982, 0.992), (0.992, 1.001),
-            (1.001, 1.010), (1.010, 1.019), (1.019, 1.029),
-            (1.029, 1.039), (1.039, 1.048), (1.048, 1.057),
-            (1.057, 1.066), (1.066, 1.075), (1.075, 1.084)
-        ]
-        return Y_reg_ranges[s]
-
     #--------------------------------------------------------------------------------------------------------------------
     def policy_evaluation (self):
         """
@@ -257,6 +249,7 @@ class PolicyIterationAgent:
 
         filename = f'Delta_Convergencia_{timestamp}.png'
         save_dir = 'delta'
+        os.makedirs(save_dir, exist_ok=True)
         image_path = os.path.join(save_dir, filename)
         plt.savefig(image_path)
 
@@ -276,48 +269,42 @@ class PolicyIterationAgent:
         3) Retorna el valor esperado 'q_sa', que usa policy_evaluation
            y policy_improvement..
         """
-        # 1. Transiciones estocásticas generadas por Simulink 
-        trans = self.mat_tran_gen(s, a)         #[(p, next_s, r, done)]
-
-        # 2. Esperanza matemática sobre todas las ramas 
-        q_sa = 0.0  #Inicia el acumulador 
-        for p, next_s, r, done in trans:
-            futuro = 0.0 if done else self.gamma * self.V[next_s]
-            q_sa += p * (r + futuro)
-
-        return q_sa
+        return sum(
+            p * (r + (0.0 if done else self.gamma * self.V[next_s]))
+            for p, next_s, r, done in self.mat_tran_gen(s,a)
+        )
     #--------------------------------------------------------------------------------------------------------------------
-    def policy_improvement(self):
-            """Evaluado policy_evaluation, el siguiente paso es mejorar la PI a PI', respondiendo la siguiente pregunta:
-                ¿Cómo puedo mejorar mi PI para obtener > R_t?.
-                El objetivo es encontrar una mejor PI eligiendo una A_t que lleve a un > R_t usando la EC. BELLMAN
-                Paso 1: REviso todas las A_t posibles en cada S_t
-                Paso 2: Selecciono la A-t que maximice el R_t esperador.
-                Paso 3: Si, la nueva PI' se actualiza de manera que sea mejor o = que la PI.
+    def policy_improvement(self)-> bool:
+            """   
+            Mejora la política π(s) seleccionando en cada estado la acción que maximiza Q(s,a),
+            usando un caché temporal para evitar simulaciones redundantes.
+            Retorna True si la política ya no cambia (es estable).
             """
             print('Mejorando la politica')
             policy_stable = True
             ac_tomada = []
-
-            estados_a_actualizar = {}
-            for s_ in range(self.nS):
-                correc_s, Y_reg_end_range = self.obtener_estado_rango(s_)
-                estados_a_actualizar[s_] = (correc_s, Y_reg_end_range)
+            q_cache = {} # (s,a) -> Q(s,a), evita llamdas repetidas a Simulink
 
             for s in range(self.nS):    # Paso 1: Recorro todas los S_t
                 old_a = self.policy[s]
+                q_values = []
 
-                action_values = [
-                    self.eval_state_action(s, a, estados_a_actualizar) for a in range(self.nA)
-                ]
-                best_action = np.argmax(action_values)
-                self.policy[s] = best_action
+                for a in range(self.nA):
+                    if (s, a) not in q_cache:
+                        q_sa = self.eval_state_action(s, a)
+                        q_cache[(s, a)] = q_sa
+                    q_values.append(q_cache[(s, a)])
+
+                #Calculo Q(s,a) para todas las acciones
+                #q_values = [self.eval_state_action(s,a) for a in range(self.nA)]
+                best_action = int(np.argmax(q_values))
                 ac_tomada.append(best_action)
-                #self.policy[s] = np.argmax([self.eval_state_action(self.V, s, a) for a in range(self.nA)])
-                #ac_tomada.append(self.policy[s])
+
+                # Actualizar la política
+                self.policy[s] = best_action
                 #Paso 3: Nueva PI' que sea mejor o = que PI. Si la A_(t+1)-->best_action
-                if old_a != best_action:   #Si nunguna de las A_t mejora PI, entonces PI es estable =True
-                    print(f"Política cambio al estado {s}: Acción Anterior: {old_a}, Acción Siguiente: {self.policy[s]}")  # Monitor policy changes
+                if best_action != old_a:   #Si nunguna de las A_t mejora PI, entonces PI es estable =True
+                    print(f"[PI]  Estado {s:2d}:  acción {old_a} → {best_action}")
                     policy_stable = False   #Si la A_t cambia, significa que PI no era estable
 
             timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -325,13 +312,14 @@ class PolicyIterationAgent:
             # Gráfico de las acciones tomadas
             plt.figure(figsize=(10,6))
             plt.plot(range(len(ac_tomada)), ac_tomada, label='Acciones tomadas')
-            plt.xlabel('Iteraciones')
+            plt.xlabel('Estados')
             plt.ylabel('Acción')
             plt.title('Evolución de las Acciones durante policy_improvement')
             plt.legend()
 
             filename = f'Acciones_policy_improvement_{timestamp}.png'
             save_dir = 'mejorPolitica'
+            os.makedirs(save_dir, exist_ok=True)
             archivo_acciones = os.path.join(save_dir, filename)
             image_path = os.path.join(save_dir, filename)
             plt.savefig(image_path)
@@ -339,6 +327,24 @@ class PolicyIterationAgent:
             print(f"Gráficas guardadas: {archivo_acciones}")
 
             return policy_stable
+    #--------------------------------------------------------------------------------------------------------------------
+    def choose_action (self, s: int, epsilon: float = 0.05)->int:
+        """
+        Devuelve una acción siguiendo una política ε-greedy sobre Q(s,a).
+
+        • Con prob. ε    → elige una acción aleatoria  (exploración)
+        Acción aleatoria, sin importar que sea buena o mala.
+        • Con prob. 1-ε  → elige argmax_a Q(s,a)       (explotación)
+        El agente elige la mejor acción que conoce hasata ahora
+        """
+        if np.random.rand() < epsilon:
+            # Exploración
+            return np.random.randint(self.nA)
+
+        # Explotación: calcular Q(s,a) para cada acción 
+        q_values = [self.eval_state_action(s, a) for a in range(self.nA)]
+        return int(np.argmax(q_values))
+    #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def int_simple_simulink(self):
         # Verifico el estado de la simulación en SIMULINK
@@ -359,7 +365,6 @@ class PolicyIterationAgent:
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
             time.sleep(0.5)
 
-#--------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------
     def sincronizar_estado_inicial(self):
@@ -407,43 +412,40 @@ class PolicyIterationAgent:
         if not hasattr(self, 'udp_socket') or self.udp_socket is None:
             self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.udp_socket.bind((self.ip, self.port))
+            self.udp_socket.bind((self.host, self.port))
             self.udp_socket.settimeout(3)  # Timeout para recibir datos
-            print(f"Socket creado y enlazado a {self.ip}:{self.port}")
+            print(f"Socket creado y enlazado a {self.host}:{self.port}")
 
         try:
-            # Limpiar el buffer del socket
-            self.limpiar_buffer()
-            # Esperar datos nuevos
+            self.limpiar_buffer()   # Descartar datos viejos
             start_time = time.time()
-            data, addr = self.udp_socket.recvfrom(4)
+            data, _ = self.udp_socket.recvfrom(4)
             end_time = time.time()
-            print(f"Y_reg_end recibido: {data}, Intervalo entre lecturas: {end_time - start_time:.6f} segundos")
+            print(f"Y_reg_end recibido: {data}, Δt={end_time - start_time:.6f}s")
 
             # Decodificar los datos
             if len(data) != 4:
-                raise ValueError(f"Tamaño de datos recibido inválido: {len(data)} bytes.")
+                raise ValueError(f"Tamaño inválido: {len(data)} bytes.")
 
+            # Desempaquetando el float IEEE754
             vreg_actual = round(struct.unpack('<f', data)[0], 3)
 
             # Validar rango de datos
             if not (-1e3 <= vreg_actual <= 9e3):
-                raise ValueError(f"Valor fuera de rango: {vreg_actual}")
+                raise ValueError(f"Valor fuera de rango: {vreg_actual} V")
 
             # Convertir a p.u. y redondear
             Y_reg_end = round(vreg_actual / self.V_base_fase, 3)
-            print(f"Valor procesado: {vreg_actual}, p.u Y_reg_end: {Y_reg_end}")
+            print(f"[matObj] V_reg = {vreg_actual} V → Y_reg_end = {Y_reg_end} p.u.")
             return Y_reg_end
 
         except socket.timeout:
-            print("Timeout: No hay datos recibidos en 3 segundos.")
+            print("[matObj] Timeout: no se recibieron datos en 3 segundos.")
             return 0.99  # Valor por defecto en caso de error
-            #continue
 
         except OSError as e:
-            print(f"Error de socket: {e}")
+            print(f"[matObj] Error de socket: {e}")
             return 0.99  # Valor por defecto en caso de error
-            #continue
     #--------------------------------------------------------------------------------------------------------------------
     def limpiar_buffer(self):
         """
@@ -463,7 +465,6 @@ class PolicyIterationAgent:
     # ------------------------------------------------------------------
     # Paso 5 · Generador de transiciones estocásticas P(s,a)
     # ------------------------------------------------------------------
-    
     def mat_tran_gen(self, s: int, a: int):
         """
     Genera la matriz de transición `self.P[s][a]` ajustando las probabilidades 
@@ -484,53 +485,52 @@ class PolicyIterationAgent:
         transiciones = []
 
         # Rama 1 Acción exitosa
-        # Calcula el tap destino  aplicando delta y acotando
+        # 1. Calcula el tap destino  aplicando delta y acotando
         delta_tap   = self.acciones[a]    # {-1, 0, +1}
+
         tap_actual  = self.get_tap_desde_state(s)
         tap_ok      = int(np.clip(tap_actual + delta_tap,
                                     self.pos_min_tap,
                                     self.pos_max_tap))
-        
         # Fijo el TAP en Simulink y se simula 
-        
-
-
-
-
-
-        #Paso 1 Incialización 
-        correc_s, Y_reg_end = estados_a_actualizar [s]
-        acciones_tap = {0: [-1, 0], 1: [1, 0], 2: [-1, 1]}            #0:bajar (-1),  1:subir (+1), 2:mantener (0),
-        tap_actual = self.get_tap_desde_state(s)
-        acciones_permitidas = acciones_tap[a]
-
-        transiciones = []
-
+        self.eng.workspace['tap'] = float(tap_ok)
+        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap_ok')", nargout=0)
+        clk = self.eng.workspace['clk']
+        nuevo_clk = not clk
+        self.eng.workspace['clk'] = nuevo_clk
+        self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
+        #time.sleep(self.pausa)
         self.int_simple_simulink()
 
-        for accion in acciones_permitidas:
-            nuevo_tap = max(self.pos_min_tap, min(self.pos_max_tap, tap_actual + accion))
-            self.eng.workspace['tap'] = float(nuevo_tap)
-            self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
-            clk = eng.workspace['clk']
-            nuevo_clk = not clk
-            self.eng.workspace['clk'] = nuevo_clk
-            self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
-            time.sleep(self.pausa)
+        Y_ok = self.matObj()
+        next_ok = self.next_state(Y_ok)
+        r_ok = self.calculo_reward(Y_ok)
+        done_ok = self.is_terminal_state(Y_ok)
+        transiciones.append((self.prob_satis, next_ok, r_ok, done_ok))
 
-            Y_reg_end_nuevo = self.matObj()
-            next_s = self.next_state(Y_reg_end_nuevo)
-            done = self.is_terminal_state(Y_reg_end_nuevo)
-            rew = self.calculo_reward(Y_reg_end_nuevo)
+        #---- Rama 2 Acción falla (tap no cambia) ---
+        tap_fail = tap_actual
+        self.eng.workspace['tap'] = float(tap_fail)
+        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap_fail')", nargout=0)
+        clk = self.eng.workspace['clk']
+        nuevo_clk = not clk
+        self.eng.workspace['clk'] = nuevo_clk
+        self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
+        #time.sleep(self.pausa)
+        self.int_simple_simulink()
 
-            transiciones.append((0.5, next_s, rew, done))
+        Y_fail = self.matObj()
+        next_fail = self.next_state(Y_fail)
+        r_fail = self.calculo_reward(Y_fail)
+        done_fail = self.is_terminal_state(Y_fail)
+
+        transiciones.append((1.0 - self.prob_satis, next_fail, r_fail, done_fail))
+
+        #Verificaicón de la normalización de 'p'
+        total_prob = sum(p for p, *_ in transiciones)
+        assert abs(total_prob - 1.0) < 1e-6, "Las probabilidades no suman 1."
 
         return transiciones
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
-
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def next_state(self, Y_reg_end):
@@ -620,12 +620,13 @@ class PolicyIterationAgent:
         Comparar con controladores lineales y no lineales, verificar su comportamientoe implemntar en el algoritomo...!!!!
         """
         print(f"Y_reg_end: {Y_reg_end_nuevo}, Rango requerido: ({self.desired_min}, {self.desired_max})")
+
         if Y_reg_end_nuevo is None:
             return -10  # Penalización alta si no se recibe un valor válido
 
-        if 0.99 <= Y_reg_end_nuevo <= 1.01:
+        if 0.992 <= Y_reg_end_nuevo <= 1.002:
             return 10  # Máxima recompensa dentro del rango óptimo
-        elif 0.97 <= Y_reg_end_nuevo < 0.99 or 1.01 < Y_reg_end_nuevo <= 1.03:
+        elif 0.97 <= Y_reg_end_nuevo < 0.992 or 1.002 < Y_reg_end_nuevo <= 1.03:
             return 5  # Recompensa media
         elif 0.95 <= Y_reg_end_nuevo < 0.97 or 1.03 < Y_reg_end_nuevo <= 1.05:
             return 2  # Recompensa baja
@@ -636,18 +637,15 @@ class PolicyIterationAgent:
     def is_terminal_state(self, Y_reg_end_nuevo):
         """
         Determina si un estado es terminal.
-            Un estado terminal ocurre en tres situaciones:
-            1. Cuando el voltaje `Y_reg_end` es menor a `0.85` (baja tensión peligrosa).
-            2. Cuando el voltaje `Y_reg_end` es mayor a `1.8` (sobretensión peligrosa).
-            3. Cuando el voltaje está dentro del rango nominal `0.99 ≤ Y_reg_end < 1.01` (objetivo alcanzado).
-            Args:
-                next_state (float): Voltaje `Y_reg_end` en p.u.
-            Returns:
-                bool: `True` si el estado es terminal, `False` en caso contrario.
-            #terminal_state = [0, 1, 2, 3, 4, 5, 6, 7] [23, 32] = True
-            #terminal_state = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] [24, 25, 26, 27, 28, 29, 30, 31] = False
         """
-        return bool(Y_reg_end_nuevo <= 0.853 or Y_reg_end_nuevo >= 1.075 or (0.992 <= Y_reg_end_nuevo < 1.002))
+        if Y_reg_end_nuevo is None:
+            return True
+
+        return (
+            Y_reg_end_nuevo < 0.95 or
+            Y_reg_end_nuevo > 1.05 or
+            (0.992 <= Y_reg_end_nuevo <= 1.002)
+            )
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def plot_simulation_results(self):
@@ -672,57 +670,13 @@ class PolicyIterationAgent:
 
         filename = f'Resultados_Simulacion_{timestamp}.png'
         save_dir = 'resultados'
+        os.makedirs(save_dir, exist_ok=True)
         image_path = os.path.join(save_dir, filename)
         plt.savefig(image_path)
         plt.close()
         print(f"Imagen guardada en: {image_path}")
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
-    def run_episodes(self, num_games, Y_reg_init, max_steps):
-        tot_rew = 0
-        action_taken = []
-        timestamp = time.strftime("%Y%m%d-%H%M%S")  # Generate a unique timestamp
-        for game_num in range(num_games):  # Use game_num as part of the filename
-            Y_reg = Y_reg_init
-            state = 0
-            done = False
-            step = 0  # Initialize a step counter
-
-            # Ajusto el epsilon al inicio de cada episodio
-            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
-
-            while not done or step < max_steps:
-                action = self.choose_action(state, self.epsilon)
-                #action = self.policy[state]
-                action_taken.append(action)
-                reward, Y_reg_end = self.eval_state_action(Y_reg, action)  # Execute action, get reward and Y_reg
-                next_state = self.get_next_state_from_simulation_output(Y_reg_end)  # Determine next state
-                done = self.is_terminal_state(next_state)  # Check if the next state is terminal
-                state = next_state  # Update the current state
-                tot_rew += reward  # Accumulate total reward
-                step += 1  # Increment the step counter
-            # If the episode ends due to reaching max_steps
-            if step >= max_steps:
-                print(f"Episodeos han terminado despues de alcanzar {max_steps} steps.")
-            # Generate a unique filename using the game number and timestamp
-            filename = f"Resultado_de_la simulacion_juegos_{game_num}_{timestamp}.png"
-            # Plotting the results for this episode (example plot)
-            plt.figure(figsize=(10, 6))
-            plt.plot(range(len(action_taken)), action_taken, label=f'Actions for game {game_num}')
-            plt.xlabel('Episode Step')
-            plt.ylabel('Acción tomada')
-            plt.title(f'Actions over Time - Game {game_num}')
-            plt.legend()
-
-            filename = f'Actions over Time - Game_{timestamp}.png'
-            save_dir = 'juegos'
-            image_path = os.path.join(save_dir, filename)
-            plt.savefig(image_path)
-            plt.close()  # Close the figure to prevent it from displaying
-
-        print(f'Completado {num_games} episodeos, total reward: {tot_rew}')
-        return action_taken
-
+#--------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
@@ -733,7 +687,14 @@ if __name__ == '__main__':
     eng.load_system('AC_Feeder_Control', nargout = 0)
     eng.run('AC_Feeder_Control_Param_02.m', nargout=0)
 
-    agent = PolicyIterationAgent(nS = 33, nA = 3, gamma = 0.88, eps = 7, eng = eng, ip = '127.0.0.1', port = 9096)  # Inicializo el agenteps = 0.01
+    agent = PolicyIterationAgent(
+        nS = 33,
+        nA = 3,
+        gamma = 0.88,
+        eps = 7, # Tolerancia 1e-3
+        eng = eng,
+        host = '127.0.0.1',
+        port = 9096)  # Inicializo el agenteps = 0.01
 
     # Ciclo principal
     try:
@@ -747,9 +708,10 @@ if __name__ == '__main__':
 
         # Llamo a mi función para graficar
         #agent.plot_simulation_results()
-
-        print("\n La matriz de la Funcion del Valor Vpi: ",agent.V.reshape((1, 10)))
-        print("\n La matriz de la politica PI es: ", agent.policy.reshape((1, 10)))
+        print("\nVπ:", agent.V)
+        print("\nπ:", agent.policy)
+        #print("\n La matriz de la Funcion del Valor Vpi: ",agent.V.reshape((1, 10)))
+        #print("\n La matriz de la politica PI es: ", agent.policy.reshape((1, 10)))
 
     #Cierro Matlab
     finally:
