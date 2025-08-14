@@ -27,7 +27,7 @@ Creado 14-01-2025 10:22 p.m.
     -------------------
     | 1.3. V-Functions|
     -------------------
-    Las Value Functions son herramientas fundamentales para evaluar cuán "bueno" es un estado (S_t)
+    Value Functions son herramientas fundamentales para evaluar cuán "bueno" es un estado (S_t)
     o una acción (A_t) dentro de un EVN. Estas funciones (State Value Function (Vs) y Action Value Function Q(s,a),
     miden la recompensa futura a partir de un estado (S_t) o de una acción (A_t).
 
@@ -116,7 +116,7 @@ class PolicyIterationAgent:
             eng (matlab.engine): Motor de MATLAB para interactuar con Simulink.
             prob_satis (float): Probabilidad de éxito en la transición de estado.
             prob_falla (float): Probabilidad de falla en la transición de estado.
-            ip (str): Dirección IP para comunicación UDP.
+            host (str): Dirección IP para comunicación UDP.
             port (int): Puerto para comunicación UDP.
         """
         # Validación de parámetros
@@ -126,17 +126,19 @@ class PolicyIterationAgent:
             raise ValueError(f"nA debe ser un entero positivo, recibido: {nA}")
         if not (0 <= gamma <= 1):
             raise ValueError(f"gamma debe estar entre 0 y 1, recibido: {gamma}")
-        
+
         # Inicialización básica
         self.nS = nS
+
         self.nA = nA                                    #Por las acciones binarias... 0/1 siempre multiplo de 2
-        self.gamma = gamma                              #Factor de descuento
         if self.nA == 3:
             self.acciones = {0:-1, 1:0, 2: +1}
         elif self.nA == 2:
             self.acciones = {0: -1, 1: +1}
         else:
             raise ValueError("Numero de acciones no soportadas")
+
+        self.gamma = gamma                              #Factor de descuento
         self.eps = eps
         self.eng = eng
 
@@ -147,16 +149,15 @@ class PolicyIterationAgent:
         # Probabilidad de transiciones
         self.prob_satis = prob_satis
 
-
          # Pausa basada en Simulink o valor por defecto
-        if pausa is None:
+        if self.pausa is None:
             try:
                 self.pausa = float(self.eng.workspace['T'])
             except Exception:
                 self.pausa = 3.0
         else:
             self.pausa = float(pausa)
-        
+
         # Configuración red y socket
         self.udp_host = host
         self.udp_port = port
@@ -177,7 +178,6 @@ class PolicyIterationAgent:
         # Sincronizar estado inicial con Simulink
         self.estado_actual = self.sincronizar_estado_inicial()
 
-
         self.last_tap = 0
         self.tap_action = 0                             # Inicializa la variable para almacenar el TAP
         self.tap_initialized = False                    # Variable de control para saber si ya se usó el 0
@@ -190,15 +190,15 @@ class PolicyIterationAgent:
         self.ax2 = None
         self.line1 = None
         self.line2 = None
-
     #--------------------------------------------------------------------------------------------------------------------
     def _init_socket(self):
-        """Crea y retorna un socket UDP configurado."""
+        """
+        Crea y retorna un socket UDP configurado.
+        """
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(1.0)  # timeout ajustable
         sock.bind((self.udp_host, self.udp_port))
         return sock
-    #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def policy_evaluation (self):
         """
@@ -238,7 +238,6 @@ class PolicyIterationAgent:
         # Tiempo que toma para que la evaluación de la política sea estable
         end_time = time.time()
         print(f"El tiempo total de evaluación es: {(end_time - start_time) / 60.0:.2f} minutes")
-        # Grafico los valores de delta e  iteraciones
         timestamp = time.strftime("%Y%m%d-%H%M%S")
 
         plt.figure()
@@ -252,13 +251,11 @@ class PolicyIterationAgent:
         os.makedirs(save_dir, exist_ok=True)
         image_path = os.path.join(save_dir, filename)
         plt.savefig(image_path)
-
         plt.close()
         print(f"Imagen guardada en: {image_path}")
     #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
     def eval_state_action(self, s: int, a: int) -> float:
-        """
+        """ 
         Devuelve Q(s,a) =  E[ r + γ·V(s') ] considerando que una misma
         acción puede derivar en varios desenlaces (éxito, fallo, etc.).
 
@@ -266,9 +263,14 @@ class PolicyIterationAgent:
               (p, next_s, r, done)
         2) Suma p·(r + γ·V[next_s]) en cada rama
            • Si 'done' es True, no se añade el término futuro.
-        3) Retorna el valor esperado 'q_sa', que usa policy_evaluation
-           y policy_improvement..
+        Args:
+            s (int): _description_
+            a (int): _description_
+
+        Returns:
+            float: EL valor esperado, que usa policy_evaluation y policy_improvemnet.
         """
+
         return sum(
             p * (r + (0.0 if done else self.gamma * self.V[next_s]))
             for p, next_s, r, done in self.mat_tran_gen(s,a)
@@ -345,26 +347,28 @@ class PolicyIterationAgent:
         q_values = [self.eval_state_action(s, a) for a in range(self.nA)]
         return int(np.argmax(q_values))
     #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
-    def int_simple_simulink(self):
+    def int_simple_simulink(self, max_wait: float = 2.0) -> None:
         # Verifico el estado de la simulación en SIMULINK
-        sim_status = self.eng.get_param('AC_Feeder_Control', 'SimulationStatus')
-        if sim_status == 'stopped':
+        modelo = 'AC_Feeder_Control'
+        sim_status = self.eng.get_param(modelo, 'SimulationStatus')
+
+        if sim_status in ('stopped', 'compiled', 'terminating'):
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
-            time.sleep(0.5)
-        elif sim_status == 'compiled':
-            self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
-            time.sleep(0.5)
         elif sim_status == 'paused':
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'continue')", nargout=0)
-            time.sleep(0.5)
         elif sim_status == 'running':
             print("La simulación está corriendo.")
+            return
         else:
             print(f"Estado desconocido de Simulink: {sim_status}. Intentando iniciar la simulación...")
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
-            time.sleep(0.5)
 
+        t0 = time.time()
+        while time.time() - t0 < max_wait:
+            sim_status = self.eng.get_param(modelo, 'SimulationStatus')
+            if sim_status == 'running':
+                return
+            time.sleep(0.02)
 #--------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------
     def sincronizar_estado_inicial(self):
@@ -392,7 +396,7 @@ class PolicyIterationAgent:
 #--------------------------------------------------------------------------------------------------------------------
     def get_tap_desde_state(self, s):
         """
-                Convierte un estado `s` en la posición del TAP correspondiente en Simulink.
+            Convierte un estado 's' en la posición del TAP correspondiente en Simulink.
             Se asume que `s=0` corresponde a `TAP=0`, los estados `s=1` a `s=16` aumentan 
             el TAP hasta `+16`, y `s=17` a `s=32` disminuyen el TAP hasta `-16`.
             Args:
@@ -694,7 +698,7 @@ if __name__ == '__main__':
         eps = 7, # Tolerancia 1e-3
         eng = eng,
         host = '127.0.0.1',
-        port = 9096)  # Inicializo el agenteps = 0.
+        port = 9096)  # Inicializo el agenteps = 0.01
 
     # Ciclo principal
     try:
