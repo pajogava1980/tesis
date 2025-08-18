@@ -123,6 +123,11 @@ class PolicyIterationAgent:
             ValueError: _description_
             ValueError: _description_
         Inicializa el agente de iteración de políticas.
+
+        git
+        git add .
+        git commit -m "Actualización de scripts y archivos .mat para control Sumlink"
+        git push origin nueva-version
         """
         # Validación de parámetros
         if not isinstance(nS, int) or nS <= 0:
