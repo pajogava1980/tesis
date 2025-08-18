@@ -286,7 +286,7 @@ class PolicyIterationAgent:
     #--------------------------------------------------------------------------------------------------------------------
     def interaccion_simulink(self, s):
         """
-        Actualiza el estado en Simulink basado en `s` y obtiene el estado corregido.
+        Actualiza el estado en Simulink basado en 's' y obtiene el estado corregido.
         Args:
             s (int): Estado actual.
         Returns:
@@ -736,7 +736,6 @@ class PolicyIterationAgent:
 
         if Y_reg_end is None:
             return -10  # Penalización alta si no se recibe un valor válido
-
         if 0.99 <= Y_reg_end <= 1.01:
             return 10  # Máxima recompensa dentro del rango óptimo
         elif 0.97 <= Y_reg_end < 0.99 or 1.01 < Y_reg_end <= 1.03:

@@ -105,8 +105,7 @@ class PolicyIterationAgent:
                  pausa = None,
                  host = '127.0.0.1',
                  port = 9096):
-        """
-        Inicializa el agente de iteración de políticas.
+        """_summary_
 
         Args:
             nS (int): Número de estados posibles.
@@ -114,10 +113,16 @@ class PolicyIterationAgent:
             gamma (float): Factor de descuento.
             eps (float): Tolerancia para la convergencia.
             eng (matlab.engine): Motor de MATLAB para interactuar con Simulink.
-            prob_satis (float): Probabilidad de éxito en la transición de estado.
-            prob_falla (float): Probabilidad de falla en la transición de estado.
-            host (str): Dirección IP para comunicación UDP.
-            port (int): Puerto para comunicación UDP.
+            prob_satis (float): Probabilidad de éxito en la transición de estado, por defaults a 0.8.
+            pausa (float): Defaults to None.
+            host (str): Dirección IP para comunicación UDP. Defaults to '127.0.0.1'.
+            port (int): Puerto para comunicación UDP. Defaults to 9096.
+        Raises:
+            ValueError: _description_
+            ValueError: _description_
+            ValueError: _description_
+            ValueError: _description_
+        Inicializa el agente de iteración de políticas.
         """
         # Validación de parámetros
         if not isinstance(nS, int) or nS <= 0:
@@ -149,7 +154,8 @@ class PolicyIterationAgent:
         # Probabilidad de transiciones
         self.prob_satis = prob_satis
 
-         # Pausa basada en Simulink o valor por defecto
+        # Pausa basada en Simulink o valor por defecto
+        self.pausa = pausa
         if self.pausa is None:
             try:
                 self.pausa = float(self.eng.workspace['T'])
@@ -165,6 +171,7 @@ class PolicyIterationAgent:
 
         self.pos_max_tap = 16
         self.pos_min_tap = -16
+
         self.V_nominal = 13.8e3
         self.initial_Y_reg = 1.0                        #Valor asumido inicialmente
         self.V_base_fase = self.V_nominal/np.sqrt(3)
@@ -255,14 +262,14 @@ class PolicyIterationAgent:
         print(f"Imagen guardada en: {image_path}")
     #--------------------------------------------------------------------------------------------------------------------
     def eval_state_action(self, s: int, a: int) -> float:
-        """ 
+        """
         Devuelve Q(s,a) =  E[ r + γ·V(s') ] considerando que una misma
         acción puede derivar en varios desenlaces (éxito, fallo, etc.).
 
         1) Obtiene la lista de transiciones con self.mat_tran_gen(s, a):
-              (p, next_s, r, done)
+        (p, next_s, r, done)
         2) Suma p·(r + γ·V[next_s]) en cada rama
-           • Si 'done' es True, no se añade el término futuro.
+        • Si 'done' es True, no se añade el término futuro.
         Args:
             s (int): _description_
             a (int): _description_
@@ -277,7 +284,7 @@ class PolicyIterationAgent:
         )
     #--------------------------------------------------------------------------------------------------------------------
     def policy_improvement(self)-> bool:
-            """   
+            """
             Mejora la política π(s) seleccionando en cada estado la acción que maximiza Q(s,a),
             usando un caché temporal para evitar simulaciones redundantes.
             Retorna True si la política ya no cambia (es estable).
@@ -343,7 +350,7 @@ class PolicyIterationAgent:
             # Exploración
             return np.random.randint(self.nA)
 
-        # Explotación: calcular Q(s,a) para cada acción 
+        # Explotación: calcular Q(s,a) para cada acción
         q_values = [self.eval_state_action(s, a) for a in range(self.nA)]
         return int(np.argmax(q_values))
     #--------------------------------------------------------------------------------------------------------------------
@@ -492,19 +499,21 @@ class PolicyIterationAgent:
         # 1. Calcula el tap destino  aplicando delta y acotando
         delta_tap   = self.acciones[a]    # {-1, 0, +1}
 
+        self.int_simple_simulink()
+
         tap_actual  = self.get_tap_desde_state(s)
         tap_ok      = int(np.clip(tap_actual + delta_tap,
                                     self.pos_min_tap,
                                     self.pos_max_tap))
-        # Fijo el TAP en Simulink y se simula 
+        # Fijo el TAP en Simulink y se simula
+        
         self.eng.workspace['tap'] = float(tap_ok)
-        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap_ok')", nargout=0)
-        clk = self.eng.workspace['clk']
-        nuevo_clk = not clk
-        self.eng.workspace['clk'] = nuevo_clk
+        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
+        
+        clk = self.eng.workspace['clk'] # Leo lo que tengo en workspace Matlab
+        self.eng.workspace['clk'] = not clk
         self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
-        #time.sleep(self.pausa)
-        self.int_simple_simulink()
+
 
         Y_ok = self.matObj()
         next_ok = self.next_state(Y_ok)
@@ -513,21 +522,18 @@ class PolicyIterationAgent:
         transiciones.append((self.prob_satis, next_ok, r_ok, done_ok))
 
         #---- Rama 2 Acción falla (tap no cambia) ---
-        tap_fail = tap_actual
-        self.eng.workspace['tap'] = float(tap_fail)
-        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap_fail')", nargout=0)
+        self.eng.workspace['tap'] = float(tap_actual)
+        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
+
         clk = self.eng.workspace['clk']
-        nuevo_clk = not clk
-        self.eng.workspace['clk'] = nuevo_clk
+        self.eng.workspace['clk'] = not clk
         self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
-        #time.sleep(self.pausa)
-        self.int_simple_simulink()
+
 
         Y_fail = self.matObj()
         next_fail = self.next_state(Y_fail)
         r_fail = self.calculo_reward(Y_fail)
         done_fail = self.is_terminal_state(Y_fail)
-
         transiciones.append((1.0 - self.prob_satis, next_fail, r_fail, done_fail))
 
         #Verificaicón de la normalización de 'p'
@@ -628,9 +634,9 @@ class PolicyIterationAgent:
         if Y_reg_end_nuevo is None:
             return -10  # Penalización alta si no se recibe un valor válido
 
-        if 0.992 <= Y_reg_end_nuevo <= 1.002:
+        if 0.992 <= Y_reg_end_nuevo < 1.002:
             return 10  # Máxima recompensa dentro del rango óptimo
-        elif 0.97 <= Y_reg_end_nuevo < 0.992 or 1.002 < Y_reg_end_nuevo <= 1.03:
+        elif 0.97 <= Y_reg_end_nuevo < 0.992 or 1.002 <= Y_reg_end_nuevo <= 1.03:
             return 5  # Recompensa media
         elif 0.95 <= Y_reg_end_nuevo < 0.97 or 1.03 < Y_reg_end_nuevo <= 1.05:
             return 2  # Recompensa baja
@@ -648,7 +654,7 @@ class PolicyIterationAgent:
         return (
             Y_reg_end_nuevo < 0.95 or
             Y_reg_end_nuevo > 1.05 or
-            (0.992 <= Y_reg_end_nuevo <= 1.002)
+            (0.992 <= Y_reg_end_nuevo < 1.002)
             )
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
