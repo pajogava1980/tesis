@@ -118,10 +118,10 @@ class PolicyIterationAgent:
             host (str): Dirección IP para comunicación UDP. Defaults to '127.0.0.1'.
             port (int): Puerto para comunicación UDP. Defaults to 9096.
         Raises:
-            ValueError: _description_
-            ValueError: _description_
-            ValueError: _description_
-            ValueError: _description_
+            ValueError: nS debe ser > 0
+            ValueError: nA debe ser > 0
+            ValueError: gamma debe estar entre 0 y 1
+            ValueError: Numero de acciones no soportadas
         Inicializa el agente de iteración de políticas.
 
         git
@@ -142,7 +142,7 @@ class PolicyIterationAgent:
 
         self.nA = nA                                    #Por las acciones binarias... 0/1 siempre multiplo de 2
         if self.nA == 3:
-            self.acciones = {0:-1, 1:0, 2: +1}
+            self.acciones = {0: -1, 1: 0, 2: +1}
         elif self.nA == 2:
             self.acciones = {0: -1, 1: +1}
         else:
@@ -222,7 +222,6 @@ class PolicyIterationAgent:
         iteracion = 0
         valores_delta = []
         start_time =time.time()
-        estados_a_actualizar = {}
 
         while True:
             delta = 0.0
@@ -281,7 +280,15 @@ class PolicyIterationAgent:
 
         Returns:
             float: EL valor esperado, que usa policy_evaluation y policy_improvemnet.
+
+        Args:
+            s (int): _description_
+            a (int): _description_
+
+        Returns:
+            float: _description_
         """
+
 
         return sum(
             p * (r + (0.0 if done else self.gamma * self.V[next_s]))
@@ -502,7 +509,7 @@ class PolicyIterationAgent:
 
         # Rama 1 Acción exitosa
         # 1. Calcula el tap destino  aplicando delta y acotando
-        delta_tap   = self.acciones[a]    # {-1, 0, +1}
+        delta_tap   = self.acciones[a]    # {0: -1, 1: 0, 2: +1} 
 
         self.int_simple_simulink()
 
@@ -511,10 +518,10 @@ class PolicyIterationAgent:
                                     self.pos_min_tap,
                                     self.pos_max_tap))
         # Fijo el TAP en Simulink y se simula
-        
+
         self.eng.workspace['tap'] = float(tap_ok)
         self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
-        
+
         clk = self.eng.workspace['clk'] # Leo lo que tengo en workspace Matlab
         self.eng.workspace['clk'] = not clk
         self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
