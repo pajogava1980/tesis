@@ -435,9 +435,9 @@ class PolicyIterationAgent:
         if not hasattr(self, 'udp_socket') or self.udp_socket is None:
             self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.udp_socket.bind((self.host, self.port))
+            self.udp_socket.bind((self.udp_host, self.udp_port)) #es la parte que puede tener problemas 
             self.udp_socket.settimeout(3)  # Timeout para recibir datos
-            print(f"Socket creado y enlazado a {self.host}:{self.port}")
+            print(f"Socket creado y enlazado a {self.udp_host}:{self.udp_port}")
 
         try:
             self.limpiar_buffer()   # Descartar datos viejos
@@ -506,19 +506,20 @@ class PolicyIterationAgent:
           done      → True si el episodio termina en esa rama
         """
         transiciones = []
-
-        # Rama 1 Acción exitosa
-        # 1. Calcula el tap destino  aplicando delta y acotando
-        delta_tap   = self.acciones[a]    # {0: -1, 1: 0, 2: +1} 
-
+        # 1) Asegurar simulación corriendo ANTES de aplicar cambios
         self.int_simple_simulink()
 
+        # 2) Preparar TAPs
+        # 1. Calcula el tap destino  aplicando delta y acotando
+        delta_tap   = self.acciones[a]    # {0: -1, 1: 0, 2: +1} 
         tap_actual  = self.get_tap_desde_state(s)
         tap_ok      = int(np.clip(tap_actual + delta_tap,
                                     self.pos_min_tap,
                                     self.pos_max_tap))
         # Fijo el TAP en Simulink y se simula
-
+        def _aplicar_rama(prob: float, tap_destino: int):
+            return
+        
         self.eng.workspace['tap'] = float(tap_ok)
         self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
 
