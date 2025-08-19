@@ -5,7 +5,6 @@ from matplotlib.animation import FuncAnimation
 import matlab.engine
 import numpy as np
 import struct, socket, time
-import random
 import os
 # Me ayuda a garantizar que la lectura del simulink sea correcta
 '''
@@ -86,6 +85,9 @@ Creado 14-01-2025 10:22 p.m.
     Aprende una política óptima con def policy_improvement(self):
 
     Interactúa con Simulink.
+        git add .
+        git commit -m "Actualización de scripts y archivos .mat para control Sumlink"
+        git push origin nueva-version
 
 '''
 class PolicyIterationAgent:
@@ -124,10 +126,6 @@ class PolicyIterationAgent:
             ValueError: Numero de acciones no soportadas
         Inicializa el agente de iteración de políticas.
 
-        git
-        git add .
-        git commit -m "Actualización de scripts y archivos .mat para control Sumlink"
-        git push origin nueva-version
         """
         # Validación de parámetros
         if not isinstance(nS, int) or nS <= 0:
@@ -197,11 +195,6 @@ class PolicyIterationAgent:
         self.desired_min = 0.95
         self.desired_max = 1.05
 
-        self.fig = None
-        self.ax1 = None
-        self.ax2 = None
-        self.line1 = None
-        self.line2 = None
     #--------------------------------------------------------------------------------------------------------------------
     def _init_socket(self):
         """
@@ -241,8 +234,8 @@ class PolicyIterationAgent:
             if delta < self.eps:
                 """
                 Paso 3: Condición de convergencia, se repite hasta que cumpla.
-                La convergencia V(s) significa que el agente ha aprendido la calidad de cada estado, dado el control actual del TAP. 
-                El sistema ha alcanzado una represetnación estable de los efecto del contrl del TAP sobre el voltaje en Yreg
+                La convergencia V(s) significa que el agente ha aprendido la calidad de cada estado, dado el control actual del TAP.
+                El sistema ha alcanzado una represetnación estable de los efecto del control del TAP sobre el voltaje en Yreg
                 Las transiciones y r imediatas estan correctamente integradas en el valor esperado de cada estado.
                 """
                 break
@@ -288,8 +281,6 @@ class PolicyIterationAgent:
         Returns:
             float: _description_
         """
-
-
         return sum(
             p * (r + (0.0 if done else self.gamma * self.V[next_s]))
             for p, next_s, r, done in self.mat_tran_gen(s,a)
@@ -427,9 +418,7 @@ class PolicyIterationAgent:
             return s
         else:
             return -(s - 16)
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------
     def matObj(self):
         # Verificar si el socket ya está creado
         if not hasattr(self, 'udp_socket') or self.udp_socket is None:
@@ -438,34 +427,27 @@ class PolicyIterationAgent:
             self.udp_socket.bind((self.udp_host, self.udp_port)) #es la parte que puede tener problemas 
             self.udp_socket.settimeout(3)  # Timeout para recibir datos
             print(f"Socket creado y enlazado a {self.udp_host}:{self.udp_port}")
-
         try:
             self.limpiar_buffer()   # Descartar datos viejos
             start_time = time.time()
             data, _ = self.udp_socket.recvfrom(4)
             end_time = time.time()
             print(f"Y_reg_end recibido: {data}, Δt={end_time - start_time:.6f}s")
-
             # Decodificar los datos
             if len(data) != 4:
                 raise ValueError(f"Tamaño inválido: {len(data)} bytes.")
-
             # Desempaquetando el float IEEE754
             vreg_actual = round(struct.unpack('<f', data)[0], 3)
-
             # Validar rango de datos
             if not (-1e3 <= vreg_actual <= 9e3):
                 raise ValueError(f"Valor fuera de rango: {vreg_actual} V")
-
             # Convertir a p.u. y redondear
             Y_reg_end = round(vreg_actual / self.V_base_fase, 3)
             print(f"[matObj] V_reg = {vreg_actual} V → Y_reg_end = {Y_reg_end} p.u.")
             return Y_reg_end
-
         except socket.timeout:
             print("[matObj] Timeout: no se recibieron datos en 3 segundos.")
             return 0.99  # Valor por defecto en caso de error
-
         except OSError as e:
             print(f"[matObj] Error de socket: {e}")
             return 0.99  # Valor por defecto en caso de error
@@ -506,56 +488,55 @@ class PolicyIterationAgent:
           done      → True si el episodio termina en esa rama
         """
         transiciones = []
+
         # 1) Asegurar simulación corriendo ANTES de aplicar cambios
         self.int_simple_simulink()
 
         # 2) Preparar TAPs
-        # 1. Calcula el tap destino  aplicando delta y acotando
-        delta_tap   = self.acciones[a]    # {0: -1, 1: 0, 2: +1} 
+        # Calcula el tap destino  aplicando delta y acotando
+        delta_tap   = self.acciones[a]    # {0: -1, 1: 0, 2: +1} o {-1, +1}
         tap_actual  = self.get_tap_desde_state(s)
+
         tap_ok      = int(np.clip(tap_actual + delta_tap,
                                     self.pos_min_tap,
                                     self.pos_max_tap))
+#--------------------------------------------------------------------------------------------------------------------
         # Fijo el TAP en Simulink y se simula
         def _aplicar_rama(prob: float, tap_destino: int):
-            return
-        
-        self.eng.workspace['tap'] = float(tap_ok)
-        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
+            # 2.1) Fijar el TAP vía wokspace-Matlab
+            self.eng.workspace['tap'] = float(tap_destino)
+            self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
 
-        clk = self.eng.workspace['clk'] # Leo lo que tengo en workspace Matlab
-        self.eng.workspace['clk'] = not clk
-        self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
+            # 2.2) Toggle de clk (0->1 o 1->), si no existe, inicaliza en False
+            try:
+                clk_actual = bool(self.eng.workspace['clk'])
+            except Exception:
+                clk_actual = False
+                self.eng.workspace['clk'] = clk_actual
+            self.eng.workspace['clk'] = (not clk_actual)
+            self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
 
+            # 2.3) Leer medición (UDP bloqueate con limpiar_buffer interno)
+            Y = self.matObj()
 
-        Y_ok = self.matObj()
-        next_ok = self.next_state(Y_ok)
-        r_ok = self.calculo_reward(Y_ok)
-        done_ok = self.is_terminal_state(Y_ok)
-        transiciones.append((self.prob_satis, next_ok, r_ok, done_ok))
+            # 2.4) Armar transición
+            next_s  = self.next_state(Y)
+            r       = self.calculo_reward(Y)
+            done    = self.is_terminal_state(Y)
+            transiciones.append((prob, next_s, r, done))
+#--------------------------------------------------------------------------------------------------------------------
+        # Rama ÉXITO (aplicando delta)
+        _aplicar_rama(self.prob_satis, tap_ok)
 
-        #---- Rama 2 Acción falla (tap no cambia) ---
-        self.eng.workspace['tap'] = float(tap_actual)
-        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
-
-        clk = self.eng.workspace['clk']
-        self.eng.workspace['clk'] = not clk
-        self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
-
-
-        Y_fail = self.matObj()
-        next_fail = self.next_state(Y_fail)
-        r_fail = self.calculo_reward(Y_fail)
-        done_fail = self.is_terminal_state(Y_fail)
-        transiciones.append((1.0 - self.prob_satis, next_fail, r_fail, done_fail))
+        # Rama FALLA (amantener tap)
+        _aplicar_rama(1.0 - self.prob_satis, tap_actual)
 
         #Verificaicón de la normalización de 'p'
         total_prob = sum(p for p, *_ in transiciones)
         assert abs(total_prob - 1.0) < 1e-6, "Las probabilidades no suman 1."
 
         return transiciones
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------
     def next_state(self, Y_reg_end):
         """
         Determina el próximo estado basado en el valor de Y_reg_end.
