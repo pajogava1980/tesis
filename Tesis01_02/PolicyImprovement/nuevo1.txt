@@ -1,0 +1,169 @@
+Mejorando la politica
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0007056692139773
+Y_reg_end de transición: 1.0007056692139773
+Y_reg_end: 1.0007056692139773, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0007056692139773: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.009954307959981
+Y_reg_end de transición: 1.009954307959981
+Y_reg_end: 1.009954307959981, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.009954307959981: 1
+Y_reg_end de transición: 1.009954307959981
+Y_reg_end: 1.009954307959981, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.009954307959981: 1
+State 0 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0006745446996081
+Y_reg_end de transición: 1.0006745446996081
+Y_reg_end: 1.0006745446996081, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0006745446996081: 1
+Y_reg_end de transición: 1.0006745446996081
+Y_reg_end: 1.0006745446996081, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0006745446996081: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.0102025112792554
+Y_reg_end de transición: 1.0102025112792554
+Y_reg_end: 1.0102025112792554, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0102025112792554: 1
+Y_reg_end de transición: 1.0102025112792554
+Y_reg_end: 1.0102025112792554, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0102025112792554: 1
+State 1 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Política cambio al estado 1: Acción Anterior: 1, Acción Siguiente: 0
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0010909375537158
+Y_reg_end de transición: 1.0010909375537158
+Y_reg_end: 1.0010909375537158, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0010909375537158: 1
+Y_reg_end de transición: 1.0010909375537158
+Y_reg_end: 1.0010909375537158, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0010909375537158: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.0106442533072768
+Y_reg_end de transición: 1.0106442533072768
+Y_reg_end: 1.0106442533072768, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0106442533072768: 1
+Y_reg_end de transición: 1.0106442533072768
+Y_reg_end: 1.0106442533072768, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0106442533072768: 1
+State 2 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Política cambio al estado 2: Acción Anterior: 1, Acción Siguiente: 0
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0016568292169603
+Y_reg_end de transición: 1.0016568292169603
+Y_reg_end: 1.0016568292169603, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0016568292169603: 1
+Y_reg_end de transición: 1.0016568292169603
+Y_reg_end: 1.0016568292169603, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0016568292169603: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.0109425638850054
+Y_reg_end de transición: 1.0109425638850054
+Y_reg_end: 1.0109425638850054, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0109425638850054: 1
+Y_reg_end de transición: 1.0109425638850054
+Y_reg_end: 1.0109425638850054, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0109425638850054: 1
+State 3 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0008003806240569
+Y_reg_end de transición: 1.0008003806240569
+Y_reg_end: 1.0008003806240569, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0008003806240569: 1
+Y_reg_end de transición: 1.0008003806240569
+Y_reg_end: 1.0008003806240569, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0008003806240569: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.0108308462224271
+Y_reg_end de transición: 1.0108308462224271
+Y_reg_end: 1.0108308462224271, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0108308462224271: 1
+Y_reg_end de transición: 1.0108308462224271
+Y_reg_end: 1.0108308462224271, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0108308462224271: 1
+State 4 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Política cambio al estado 4: Acción Anterior: 1, Acción Siguiente: 0
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0016525133292231
+Y_reg_end de transición: 1.0016525133292231
+Y_reg_end: 1.0016525133292231, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0016525133292231: 1
+Y_reg_end de transición: 1.0016525133292231
+Y_reg_end: 1.0016525133292231, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0016525133292231: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.009933795873597
+Y_reg_end de transición: 1.009933795873597
+Y_reg_end: 1.009933795873597, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.009933795873597: 1
+Y_reg_end de transición: 1.009933795873597
+Y_reg_end: 1.009933795873597, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.009933795873597: 1
+State 5 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0009514718027377
+Y_reg_end de transición: 1.0009514718027377
+Y_reg_end: 1.0009514718027377, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0009514718027377: 1
+Y_reg_end de transición: 1.0009514718027377
+Y_reg_end: 1.0009514718027377, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0009514718027377: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.010876720793706
+Y_reg_end de transición: 1.010876720793706
+Y_reg_end: 1.010876720793706, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.010876720793706: 1
+Y_reg_end de transición: 1.010876720793706
+Y_reg_end: 1.010876720793706, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.010876720793706: 1
+State 6 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Política cambio al estado 6: Acción Anterior: 1, Acción Siguiente: 0
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0016563342776572
+Y_reg_end de transición: 1.0016563342776572
+Y_reg_end: 1.0016563342776572, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0016563342776572: 1
+Y_reg_end de transición: 1.0016563342776572
+Y_reg_end: 1.0016563342776572, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0016563342776572: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.0107112209219629
+Y_reg_end de transición: 1.0107112209219629
+Y_reg_end: 1.0107112209219629, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0107112209219629: 1
+Y_reg_end de transición: 1.0107112209219629
+Y_reg_end: 1.0107112209219629, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0107112209219629: 1
+State 7 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Política cambio al estado 7: Acción Anterior: 1, Acción Siguiente: 0
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0012211625753384
+Y_reg_end de transición: 1.0012211625753384
+Y_reg_end: 1.0012211625753384, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0012211625753384: 1
+Y_reg_end de transición: 1.0012211625753384
+Y_reg_end: 1.0012211625753384, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0012211625753384: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.0100393474992073
+Y_reg_end de transición: 1.0100393474992073
+Y_reg_end: 1.0100393474992073, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0100393474992073: 1
+Y_reg_end de transición: 1.0100393474992073
+Y_reg_end: 1.0100393474992073, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0100393474992073: 1
+State 8 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Política cambio al estado 8: Acción Anterior: 1, Acción Siguiente: 0
+Acción: 0, Tap actual: 9.0, Nuevo Tap: 8.0
+Último valor de 'Y_reg_end' en pu: 1.0011662074761154
+Y_reg_end de transición: 1.0011662074761154
+Y_reg_end: 1.0011662074761154, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0011662074761154: 1
+Acción: 1, Tap actual: 8.0, Nuevo Tap: 9.0
+Último valor de 'Y_reg_end' en pu: 1.0099739329145314
+Y_reg_end de transición: 1.0099739329145314
+Y_reg_end: 1.0099739329145314, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 1.0099739329145314: 1
+State 9 Valor de la Acción: [np.float64(8.275361309952018), np.float64(8.275361309952018)], Mejor Acción: 0
+Gráficas guardadas: mejorPolitica\Acciones_policy_improvement_20241204-124404.png

@@ -1,0 +1,166 @@
+Iteration: 3, Delta: 0
+El tiempo total de evaluación es: 14.84 minutes
+Imagen guardada en: delta\Delta_Convergencia_20241204-130234.png
+Mejorando la politica
+Acción: 0, Tap actual: -10.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.833967212038903
+Y_reg_end de transición: 0.833967212038903
+Y_reg_end: 0.833967212038903, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.833967212038903: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.8434638101390596
+Y_reg_end de transición: 0.8434638101390596
+Y_reg_end: 0.8434638101390596, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8434638101390596: -5
+Y_reg_end de transición: 0.8434638101390596
+Y_reg_end: 0.8434638101390596, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8434638101390596: -5
+State 0 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Acción: 0, Tap actual: -9.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.8339478805784367
+Y_reg_end de transición: 0.8339478805784367
+Y_reg_end: 0.8339478805784367, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8339478805784367: -5
+Y_reg_end de transición: 0.8339478805784367
+Y_reg_end: 0.8339478805784367, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8339478805784367: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.8432406274030191
+Y_reg_end de transición: 0.8432406274030191
+Y_reg_end: 0.8432406274030191, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8432406274030191: -5
+Y_reg_end de transición: 0.8432406274030191
+Y_reg_end: 0.8432406274030191, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8432406274030191: -5
+State 1 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Acción: 0, Tap actual: -9.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.8346970964426862
+Y_reg_end de transición: 0.8346970964426862
+Y_reg_end: 0.8346970964426862, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8346970964426862: -5
+Y_reg_end de transición: 0.8346970964426862
+Y_reg_end: 0.8346970964426862, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8346970964426862: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.8434754065358877
+Y_reg_end de transición: 0.8434754065358877
+Y_reg_end: 0.8434754065358877, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8434754065358877: -5
+Y_reg_end de transición: 0.8434754065358877
+Y_reg_end: 0.8434754065358877, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8434754065358877: -5
+State 2 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Acción: 0, Tap actual: -9.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.8347002356512458
+Y_reg_end de transición: 0.8347002356512458
+Y_reg_end: 0.8347002356512458, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8347002356512458: -5
+Y_reg_end de transición: 0.8347002356512458
+Y_reg_end: 0.8347002356512458, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8347002356512458: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.8434087725869528
+Y_reg_end de transición: 0.8434087725869528
+Y_reg_end: 0.8434087725869528, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8434087725869528: -5
+Y_reg_end de transición: 0.8434087725869528
+Y_reg_end: 0.8434087725869528, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8434087725869528: -5
+State 3 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Acción: 0, Tap actual: -9.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.8341180848928866
+Y_reg_end de transición: 0.8341180848928866
+Y_reg_end: 0.8341180848928866, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8341180848928866: -5
+Y_reg_end de transición: 0.8341180848928866
+Y_reg_end: 0.8341180848928866, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8341180848928866: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.843243858950601
+Y_reg_end de transición: 0.843243858950601
+Y_reg_end: 0.843243858950601, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.843243858950601: -5
+Y_reg_end de transición: 0.843243858950601
+Y_reg_end: 0.843243858950601, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.843243858950601: -5
+State 4 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Acción: 0, Tap actual: -9.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.8339160929147342
+Y_reg_end de transición: 0.8339160929147342
+Y_reg_end: 0.8339160929147342, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8339160929147342: -5
+Y_reg_end de transición: 0.8339160929147342
+Y_reg_end: 0.8339160929147342, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8339160929147342: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.8435223168050532
+Y_reg_end de transición: 0.8435223168050532
+Y_reg_end: 0.8435223168050532, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8435223168050532: -5
+Y_reg_end de transición: 0.8435223168050532
+Y_reg_end: 0.8435223168050532, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8435223168050532: -5
+State 5 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Acción: 0, Tap actual: -9.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.8343314037629412
+Y_reg_end de transición: 0.8343314037629412
+Y_reg_end: 0.8343314037629412, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8343314037629412: -5
+Y_reg_end de transición: 0.8343314037629412
+Y_reg_end: 0.8343314037629412, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8343314037629412: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.8439890888682324
+Y_reg_end de transición: 0.8439890888682324
+Y_reg_end: 0.8439890888682324, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8439890888682324: -5
+Y_reg_end de transición: 0.8439890888682324
+Y_reg_end: 0.8439890888682324, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8439890888682324: -5
+State 6 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Acción: 0, Tap actual: -9.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.8347244583829545
+Y_reg_end de transición: 0.8347244583829545
+Y_reg_end: 0.8347244583829545, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8347244583829545: -5
+Y_reg_end de transición: 0.8347244583829545
+Y_reg_end: 0.8347244583829545, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8347244583829545: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.8432139680996485
+Y_reg_end de transición: 0.8432139680996485
+Y_reg_end: 0.8432139680996485, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8432139680996485: -5
+Y_reg_end de transición: 0.8432139680996485
+Y_reg_end: 0.8432139680996485, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8432139680996485: -5
+State 7 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Acción: 0, Tap actual: -9.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.8346242471979949
+Y_reg_end de transición: 0.8346242471979949
+Y_reg_end: 0.8346242471979949, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8346242471979949: -5
+Y_reg_end de transición: 0.8346242471979949
+Y_reg_end: 0.8346242471979949, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8346242471979949: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.8431765018521992
+Y_reg_end de transición: 0.8431765018521992
+Y_reg_end: 0.8431765018521992, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8431765018521992: -5
+Y_reg_end de transición: 0.8431765018521992
+Y_reg_end: 0.8431765018521992, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8431765018521992: -5
+State 8 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Acción: 0, Tap actual: -9.0, Nuevo Tap: -10
+Último valor de 'Y_reg_end' en pu: 0.8342411049513011
+Y_reg_end de transición: 0.8342411049513011
+Y_reg_end: 0.8342411049513011, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8342411049513011: -5
+Acción: 1, Tap actual: -10.0, Nuevo Tap: -9.0
+Último valor de 'Y_reg_end' en pu: 0.8439759904184946
+Y_reg_end de transición: 0.8439759904184946
+Y_reg_end: 0.8439759904184946, Rango requerido: (0.95, 1.05)
+Recompensa calculada para Y_reg_end 0.8439759904184946: -5
+State 9 Valor de la Acción: [-5.0, -5.0], Mejor Acción: 0
+Gráficas guardadas: mejorPolitica\Acciones_policy_improvement_20241204-131045.png

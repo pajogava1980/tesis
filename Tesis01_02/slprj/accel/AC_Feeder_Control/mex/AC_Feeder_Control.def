@@ -1,0 +1,4 @@
+LIBRARY ..\..\..\..\AC_Feeder_Control_acc.mexw64
+EXPORTS
+    mexFunction
+    mexfilerequiredapiversion

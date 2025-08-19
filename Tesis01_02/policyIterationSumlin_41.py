@@ -4,10 +4,11 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import matlab.engine
 import numpy as np
-import struct, socket, time
+import socket
+import struct
 import random
-import os
-# Me ayuda a garantizar que la lectura del simulink sea correcta
+import time
+import os   #Me ayuda a garantizar que la lectura del simulink sea correcta
 '''
 Creado 14-01-2025 10:22 p.m.
 
@@ -95,16 +96,7 @@ class PolicyIterationAgent:
     """
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
-    def __init__(self,
-                 nS,
-                 nA,
-                 gamma,
-                 eps, #Tolerancia 1e-3
-                 eng,
-                 prob_satis = 0.8,
-                 pausa = None,
-                 host = '127.0.0.1',
-                 port = 9096):
+    def __init__(self, nS, nA, gamma, eps, eng, prob_satis = 0.9, prob_falla = 0.7,  ip = '127.0.0.1', port = 9096):
         """
         Inicializa el agente de iteración de políticas.
 
@@ -119,64 +111,27 @@ class PolicyIterationAgent:
             ip (str): Dirección IP para comunicación UDP.
             port (int): Puerto para comunicación UDP.
         """
-        # Validación de parámetros
-        if not isinstance(nS, int) or nS <= 0:
-            raise ValueError(f"nS debe ser un entero positivo, recibido: {nS}")
-        if not isinstance(nA, int) or nA <= 0:
-            raise ValueError(f"nA debe ser un entero positivo, recibido: {nA}")
-        if not (0 <= gamma <= 1):
-            raise ValueError(f"gamma debe estar entre 0 y 1, recibido: {gamma}")
-        
-        # Inicialización básica
+
         self.nS = nS
         self.nA = nA                                    #Por las acciones binarias... 0/1 siempre multiplo de 2
+
         self.gamma = gamma                              #Factor de descuento
-        if self.nA == 3:
-            self.acciones = {0:-1, 1:0, 2: +1}
-        elif self.nA == 2:
-            self.acciones = {0: -1, 1: +1}
-        else:
-            raise ValueError("Numero de acciones no soportadas")
         self.eps = eps
         self.eng = eng
 
-        # Estados de Valor y Politica
         self.V = np.zeros(nS)
-        self.policy = np.zeros(nS, dtype=int)
+        self.policy = np.zeros(nS)
 
-        # Probabilidad de transiciones
-        self.prob_satis = prob_satis
-
-
-         # Pausa basada en Simulink o valor por defecto
-        if pausa is None:
-            try:
-                self.pausa = float(self.eng.workspace['T'])
-            except Exception:
-                self.pausa = 3.0
-        else:
-            self.pausa = float(pausa)
-        
-        # Configuración red y socket
-        self.udp_host = host
-        self.udp_port = port
-        self.udp_socket = self._init_socket()
-
-        self.pos_max_tap = 16
-        self.pos_min_tap = -16
+        self.Y_reg_val = []
+        self.tap_pos_val = []
         self.V_nominal = 13.8e3
         self.initial_Y_reg = 1.0                        #Valor asumido inicialmente
         self.V_base_fase = self.V_nominal/np.sqrt(3)
 
-        self.Y_reg_val = []
-        self.tap_pos_val = []
+        self.pausa = 3
 
-        # Matriz de transición vacía
-        self.P = {s: {a: [] for a in range(self.nA)} for s in range(self.nS)}
-
-        # Sincronizar estado inicial con Simulink
-        self.estado_actual = self.sincronizar_estado_inicial()
-
+        self.pos_max_tap = 16
+        self.pos_min_tap = -16
 
         self.last_tap = 0
         self.tap_action = 0                             # Inicializa la variable para almacenar el TAP
@@ -191,40 +146,61 @@ class PolicyIterationAgent:
         self.line1 = None
         self.line2 = None
 
+        self.prob_satis = prob_satis
+        self.prob_falla = prob_falla
+        self.P = {s: {a: [] for a in range(self.nA)} for s in range(self.nS)}
+
+        #self.P = {}
+
+        self.ip = ip
+        self.port = port
+        self.udp_socket = None                          # Se inicializa con None para la verificación en la clase marObj:
+
+        # Sincronizar estado inicial con Simulink
+        self.estado_actual = self.sincronizar_estado_inicial()
     #--------------------------------------------------------------------------------------------------------------------
-    def _init_socket(self):
-        """Crea y retorna un socket UDP configurado."""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(1.0)  # timeout ajustable
-        sock.bind((self.udp_host, self.udp_port))
-        return sock
     #--------------------------------------------------------------------------------------------------------------------
+    def obtener_estado_rango(self, s):
+        Y_reg_ranges = [
+            (16, (0.927, 0.936)), (17, (0.936, 0.945)), (18, (0.945, 0.955)),
+            (19, (0.955, 0.964)), (20, (0.964, 0.973)), (21, (0.973, 0.982)),
+            (22, (0.982, 0.992)), (23, (0.992, 1.001)), (24, (1.001, 1.010)),
+            (25, (1.010, 1.019)), (26, (1.019, 1.029)), (27, (1.029, 1.039)),
+            (28, (1.039, 1.048)), (29, (1.048, 1.057)), (30, (1.057, 1.066)),
+            (31, (1.066, 1.075)), (15, (0.917, 0.927)), (14, (0.908, 0.917)),
+            (13, (0.899, 0.908)), (12, (0.890, 0.899)), (11, (0.880, 0.890)),
+            (10, (0.871, 0.880)), (9, (0.862, 0.871)),  (8, (0.852, 0.862)),
+            (7,  (0.844, 0.852)), (6, (0.834, 0.844)),  (5, (0.825, 0.834)),
+            (4,  (0.815, 0.825)), (3, (0.806, 0.815)),  (2, (0.797, 0.806)),
+            (1,  (0.788, 0.797)), (0, (0.779, 0.788))
+        ]
+        return Y_reg_ranges[s]
     #--------------------------------------------------------------------------------------------------------------------
     def policy_evaluation (self):
         """
         Evalúa la política actual y actualiza los valores de estado `V(s)` hasta la convergencia.
         Utiliza la ecuación de Bellman para calcular el valor esperado de cada estado.
-        V(s) = sum_a pi(a|s) * sum_{s',r} P[s][a] (r + gamma * V(s'))
         """
-        import time
         iteracion = 0
         valores_delta = []
         start_time =time.time()
         estados_a_actualizar = {}
 
-        while True:
-            delta = 0.0
+        for s in range(self.nS):
+            correc_s, Y_reg_end_range = self.obtener_estado_rango(s)
+            estados_a_actualizar[s] = (correc_s, Y_reg_end_range)
+
+        while True:                         # Formula 3.8 pag. 62, pseudocode pg. 64 "miesntras PI no es estable"
+            delta = 0                       # la V_función es etable cuando delta sea < que eps
             # Paso 2: Actualizar los valores de estado de manera mas eficiente
-            for s in range(self.nS):
-                old_v = self.V[s]
-                # Evalúo la acción que indíca la política en s
-                self.V[s] = self.eval_state_action(s, self.policy[s])
-                # Máxima diferencia para el critério de parada
-                delta = max(delta, np.abs(old_v - self.V[s]))
-                print(f"State: {s}, Old V[s]: {old_v}, New V[s]: {self.V[s]},  Delta: {delta:.4f}") #Reward: {reward},
+            for s, (correc_s, Y_reg_end_range) in estados_a_actualizar.items():
+                old_v = self.V[correc_s]
+                self.V[correc_s] = self.eval_state_action(s, self.policy[correc_s], estados_a_actualizar)
+                delta = max(delta, np.abs(old_v - self.V[correc_s]))
+                print(f"State: {correc_s}, Old V[s]: {old_v}, New V[s]: {self.V[correc_s]},  Delta: {delta}") #Reward: {reward},
 
             valores_delta.append(delta)
-            print(f"Iteration {iteracion}: max delta={delta:.4f}")
+            print(f"Iteration: {iteracion}, Delta: {delta}")
             iteracion += 1
 
             if delta < self.eps:
@@ -249,7 +225,6 @@ class PolicyIterationAgent:
 
         filename = f'Delta_Convergencia_{timestamp}.png'
         save_dir = 'delta'
-        os.makedirs(save_dir, exist_ok=True)
         image_path = os.path.join(save_dir, filename)
         plt.savefig(image_path)
 
@@ -257,119 +232,136 @@ class PolicyIterationAgent:
         print(f"Imagen guardada en: {image_path}")
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
-    def eval_state_action(self, s: int, a: int) -> float:
+    def eval_state_action(self, s, a, estados_a_actualizar):
         """
-        Devuelve Q(s,a) =  E[ r + γ·V(s') ] considerando que una misma
-        acción puede derivar en varios desenlaces (éxito, fallo, etc.).
+        Evalúa una acción en un estado dado utilizando Simulink y calcula la recompensa.
+        Args:
+            s (int): Estado actual.
+            a (int): Acción a evaluar.
 
-        1) Obtiene la lista de transiciones con self.mat_tran_gen(s, a):
-              (p, next_s, r, done)
-        2) Suma p·(r + γ·V[next_s]) en cada rama
-           • Si 'done' es True, no se añade el término futuro.
-        3) Retorna el valor esperado 'q_sa', que usa policy_evaluation
-           y policy_improvement..
+        Returns:
+            float: Valor esperado de la acción en el estado dado.
         """
-        return sum(
-            p * (r + (0.0 if done else self.gamma * self.V[next_s]))
-            for p, next_s, r, done in self.mat_tran_gen(s,a)
-        )
+        correc_s, Y_reg_end_range = estados_a_actualizar[s]
+        Y_reg_end =(Y_reg_end_range[0] + Y_reg_end_range[1])/2
+        #Y_reg_end = Y_reg_end_range[0]
+
+        # Actualizo los valores almacenados
+        self.tap_pos_val.append(self.get_tap_desde_state(correc_s))
+        self.Y_reg_val.append(Y_reg_end)
+
+        #transicion = self.P[s][a]
+        mat_tran = self.mat_tran_gen(s, a, Y_reg_end, estados_a_actualizar)
+        print(mat_tran)
+
+        v_fun = sum(p * (rew + (0 if done else self.gamma * self.V[next_s])) for p, next_s, rew, done in mat_tran)
+
+        return v_fun
     #--------------------------------------------------------------------------------------------------------------------
-    def policy_improvement(self)-> bool:
-            """   
-            Mejora la política π(s) seleccionando en cada estado la acción que maximiza Q(s,a),
-            usando un caché temporal para evitar simulaciones redundantes.
-            Retorna True si la política ya no cambia (es estable).
-            """
-            print('Mejorando la politica')
-            policy_stable = True
-            ac_tomada = []
-            q_cache = {} # (s,a) -> Q(s,a), evita llamdas repetidas a Simulink
 
-            for s in range(self.nS):    # Paso 1: Recorro todas los S_t
-                old_a = self.policy[s]
-                q_values = []
-
-                for a in range(self.nA):
-                    if (s, a) not in q_cache:
-                        q_sa = self.eval_state_action(s, a)
-                        q_cache[(s, a)] = q_sa
-                    q_values.append(q_cache[(s, a)])
-
-                #Calculo Q(s,a) para todas las acciones
-                #q_values = [self.eval_state_action(s,a) for a in range(self.nA)]
-                best_action = int(np.argmax(q_values))
-                ac_tomada.append(best_action)
-
-                # Actualizar la política
-                self.policy[s] = best_action
-                #Paso 3: Nueva PI' que sea mejor o = que PI. Si la A_(t+1)-->best_action
-                if best_action != old_a:   #Si nunguna de las A_t mejora PI, entonces PI es estable =True
-                    print(f"[PI]  Estado {s:2d}:  acción {old_a} → {best_action}")
-                    policy_stable = False   #Si la A_t cambia, significa que PI no era estable
-
-            timestamp = time.strftime("%Y%m%d-%H%M%S")
-
-            # Gráfico de las acciones tomadas
-            plt.figure(figsize=(10,6))
-            plt.plot(range(len(ac_tomada)), ac_tomada, label='Acciones tomadas')
-            plt.xlabel('Estados')
-            plt.ylabel('Acción')
-            plt.title('Evolución de las Acciones durante policy_improvement')
-            plt.legend()
-
-            filename = f'Acciones_policy_improvement_{timestamp}.png'
-            save_dir = 'mejorPolitica'
-            os.makedirs(save_dir, exist_ok=True)
-            archivo_acciones = os.path.join(save_dir, filename)
-            image_path = os.path.join(save_dir, filename)
-            plt.savefig(image_path)
-            plt.close() # Si no cierro, la simulación se para
-            print(f"Gráficas guardadas: {archivo_acciones}")
-
-            return policy_stable
-    #--------------------------------------------------------------------------------------------------------------------
-    def choose_action (self, s: int, epsilon: float = 0.05)->int:
-        """
-        Devuelve una acción siguiendo una política ε-greedy sobre Q(s,a).
-
-        • Con prob. ε    → elige una acción aleatoria  (exploración)
-        Acción aleatoria, sin importar que sea buena o mala.
-        • Con prob. 1-ε  → elige argmax_a Q(s,a)       (explotación)
-        El agente elige la mejor acción que conoce hasata ahora
-        """
-        if np.random.rand() < epsilon:
-            # Exploración
-            return np.random.randint(self.nA)
-
-        # Explotación: calcular Q(s,a) para cada acción 
-        q_values = [self.eval_state_action(s, a) for a in range(self.nA)]
-        return int(np.argmax(q_values))
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
     def int_simple_simulink(self):
         # Verifico el estado de la simulación en SIMULINK
         sim_status = self.eng.get_param('AC_Feeder_Control', 'SimulationStatus')
+
         if sim_status == 'stopped':
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
             time.sleep(0.5)
+
         elif sim_status == 'compiled':
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
             time.sleep(0.5)
+
         elif sim_status == 'paused':
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'continue')", nargout=0)
             time.sleep(0.5)
+
         elif sim_status == 'running':
             print("La simulación está corriendo.")
+
         else:
             print(f"Estado desconocido de Simulink: {sim_status}. Intentando iniciar la simulación...")
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
             time.sleep(0.5)
 
+    #--------------------------------------------------------------------------------------------------------------------
+    def interaccion_simulink(self, s):
+        """
+        Actualiza el estado en Simulink basado en 's' y obtiene el estado corregido.
+        Args:
+            s (int): Estado actual.
+        Returns:
+            tuple: (correc_s, Y_reg_end) - Estado corregido y voltaje medido.
+        """
+        tap_position = self.get_tap_desde_state(s)
+
+        # Verifico el estado de la simulación en SIMULINK
+        sim_status = self.eng.get_param('AC_Feeder_Control', 'SimulationStatus')
+
+        if sim_status == 'stopped':
+            self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
+            time.sleep(0.5)
+
+        elif sim_status == 'compiled':
+            self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
+            time.sleep(0.5)
+
+        elif sim_status == 'paused':
+            self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'continue')", nargout=0)
+            time.sleep(0.5)
+
+        elif sim_status == 'running':
+            print("La simulación está corriendo.")
+
+        else:
+            print(f"Estado desconocido de Simulink: {sim_status}. Intentando iniciar la simulación...")
+            self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
+            time.sleep(0.5)
+
+        # Actualizo la posición del TAP aleatoria en SIMULINK
+        self.eng.workspace['tap'] = float(tap_position)
+        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
+
+        # Cambio el clk
+        clk = self.eng.workspace['clk']          # Leo lo que tengo en el workspace
+        nuevo_clk = not clk
+        self.eng.workspace['clk'] = nuevo_clk    # Cambio en el Workspace el valor
+        self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
+
+        # Configuración de la señal `sim_ready`
+        self.eng.workspace['sim_ready'] = False  # Indicar a Simulink que Python espera el próximo estado
+        time.sleep(self.pausa)  # Tiempo para que Simulink procese el cambio
+
+        # Llamada al método matObj para recibir los datos
+        Y_reg_end = self.matObj()
+
+        # Validación del estado corregido
+        correc_s = self.verificacion_estado_corregido(s, Y_reg_end)
+
+        return correc_s, Y_reg_end
+
 #--------------------------------------------------------------------------------------------------------------------
+    def verificacion_estado_corregido(self, s, Y_reg_end):
+        """
+        Verifica y corrige el estado `s` basado en `Y_reg_end`.
+        Args:
+            s (int): Estado actual.
+            Y_reg_end (float): Voltaje obtenido de Simulink.
+
+        Returns:
+            int: Estado corregido `correc_s`.
+        """
+        correc_s = self.next_state(Y_reg_end)
+
+        # Asegurar que `s` corresponde a Simulink antes de aplicar la política
+        if s != correc_s:
+            print(f"Advertencia: Simulink reporta estado {correc_s}, corrigiendo `s={s}` → `s={correc_s}`")
+            return  correc_s
+        return s
 #--------------------------------------------------------------------------------------------------------------------
     def sincronizar_estado_inicial(self):
         #Leo el tap de Simulink
-        tap_inicial = float(self.eng.workspace['tap'])
+        tap_inicial = float(eng.workspace['tap'])
+
         s_inicial = self.get_state_desde_tap(tap_inicial)
 
         # Sincronizar el estado inicial de Python con Simulink
@@ -380,23 +372,28 @@ class PolicyIterationAgent:
     def get_state_desde_tap(self, tap):
         """
             Convierte una posición de TAP en su estado `s` equivalente en Python.
+
             Args:
                 tap (int): Posición del TAP en Simulink.
+
             Returns:
                 int: Estado `s` correspondiente.
+
         """
         if tap >= 0:
             return tap
         else:
-            return 16 + abs(tap)
+            return 16 - abs(tap)
 #--------------------------------------------------------------------------------------------------------------------
     def get_tap_desde_state(self, s):
         """
                 Convierte un estado `s` en la posición del TAP correspondiente en Simulink.
             Se asume que `s=0` corresponde a `TAP=0`, los estados `s=1` a `s=16` aumentan 
             el TAP hasta `+16`, y `s=17` a `s=32` disminuyen el TAP hasta `-16`.
+
             Args:
                 s (int): Estado actual.
+
             Returns:
                 int: Posición del TAP asociada al estado `s`.
         """
@@ -405,6 +402,28 @@ class PolicyIterationAgent:
         else:
             return -(s - 16)
     #--------------------------------------------------------------------------------------------------------------------
+    def get_tap_position(self, tap_action):
+        """
+                Obtiene la posición del TAP basada en la política.
+            Primero asegura que el TAP esté sincronizado con el estado `s`.
+            Luego, aplica la acción `tap_action`.
+
+            Args:
+                tap_action (int): Acción aplicada (-1, 0, +1).
+
+            Returns:
+                int: Nueva posición del TAP dentro de los límites establecidos.
+        """
+        # Obtener TAP basado en `s`
+        tap_s = self.get_tap_desde_state(self.tap_action)
+
+        # Aplicar la acción
+        nueva_pos_tap = max(self.pos_min_tap, min(self.pos_max_tap, tap_s + tap_action))
+
+        #Actualizo el TAP en Simulink
+        self.tap_action = nueva_pos_tap
+
+        return nueva_pos_tap
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def matObj(self):
@@ -412,125 +431,213 @@ class PolicyIterationAgent:
         if not hasattr(self, 'udp_socket') or self.udp_socket is None:
             self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.udp_socket.bind((self.host, self.port))
+            self.udp_socket.bind((self.ip, self.port))
             self.udp_socket.settimeout(3)  # Timeout para recibir datos
-            print(f"Socket creado y enlazado a {self.host}:{self.port}")
+            print(f"Socket creado y enlazado a {self.ip}:{self.port}")
 
         try:
-            self.limpiar_buffer()   # Descartar datos viejos
+            # Limpiar el buffer del socket
+            self.limpiar_buffer()
+            # Esperar datos nuevos
             start_time = time.time()
-            data, _ = self.udp_socket.recvfrom(4)
+            data, addr = self.udp_socket.recvfrom(4)
             end_time = time.time()
-            print(f"Y_reg_end recibido: {data}, Δt={end_time - start_time:.6f}s")
+            print(f"Y_reg_end recibido: {data}, Intervalo entre lecturas: {end_time - start_time:.6f} segundos")
 
             # Decodificar los datos
             if len(data) != 4:
-                raise ValueError(f"Tamaño inválido: {len(data)} bytes.")
+                raise ValueError(f"Tamaño de datos recibido inválido: {len(data)} bytes.")
 
-            # Desempaquetando el float IEEE754
             vreg_actual = round(struct.unpack('<f', data)[0], 3)
 
             # Validar rango de datos
             if not (-1e3 <= vreg_actual <= 9e3):
-                raise ValueError(f"Valor fuera de rango: {vreg_actual} V")
+                raise ValueError(f"Valor fuera de rango: {vreg_actual}")
 
             # Convertir a p.u. y redondear
             Y_reg_end = round(vreg_actual / self.V_base_fase, 3)
-            print(f"[matObj] V_reg = {vreg_actual} V → Y_reg_end = {Y_reg_end} p.u.")
+            print(f"Valor procesado: {vreg_actual}, p.u Y_reg_end: {Y_reg_end}")
             return Y_reg_end
 
         except socket.timeout:
-            print("[matObj] Timeout: no se recibieron datos en 3 segundos.")
+            print("Timeout: No hay datos recibidos en 3 segundos.")
             return 0.99  # Valor por defecto en caso de error
 
         except OSError as e:
-            print(f"[matObj] Error de socket: {e}")
+            print(f"Error de socket: {e}")
             return 0.99  # Valor por defecto en caso de error
+
+
     #--------------------------------------------------------------------------------------------------------------------
     def limpiar_buffer(self):
         """
         Limpia el buffer del socket UDP para evitar datos residuales antes de leer nuevos datos.
         """
-        # Limpiar el buffer del socket
+                # Limpiar el buffer del socket
         intento =0
         while True:
             try:
                 self.udp_socket.recvfrom(4)
                 print(f"Intento {intento + 1}: Dato eliminado del buffer.")
-                intento += 1
             except socket.timeout:
                 print(f"Buffer vacío después de {intento + 1} intentos.")
                 break
-            #intento += 1
-    # ------------------------------------------------------------------
-    # Paso 5 · Generador de transiciones estocásticas P(s,a)
-    # ------------------------------------------------------------------
-    def mat_tran_gen(self, s: int, a: int):
+            intento += 1
+
+
+    #--------------------------------------------------------------------------------------------------------------------
+    def mat_tran_gen(self, s, a, Y_reg_end, estados_a_actualizar ):
         """
     Genera la matriz de transición `self.P[s][a]` ajustando las probabilidades 
     de transición en función de la acción aplicada al TAP y su impacto en el voltaje `Y_reg_end`.
-    Devuelve una lista de tuplas (p, next_s, r, done) que describe
-        todas las ramificaciones posibles al ejecutar la acción `a`
-        desde el estado `s`.
 
-        • Rama 1  (éxito)  -> prob = self.prob_satis
-        • Rama 2  (falla)  -> prob = 1 - self.prob_satis
+    Args:
+        s (int): Estado actual antes de aplicar la acción.
+        a (int): Acción aplicada al TAP (`-1`: bajar, `0`: mantener, `+1`: subir).
+        Y_reg_end (float): Voltaje antes de aplicar la acción.
 
-        Cada rama:
-          p         → probabilidad de ocurrir
-          next_s    → estado discreto alcanzado
-          r         → recompensa inmediata
-          done      → True si el episodio termina en esa rama
+    Returns:
+        list: Lista de tuplas con la estructura [(probabilidad, next_s, rew, done)].
+
+            Ejemplo de salida (`self.P[s][a]`):
+            ```
+            {
+                0: [(0.8, 2, 10, False), (0.2, 0, -1, False)],
+                1: [(0.1, 3, 15, False), (0.9, 1, -1, False)],
+                2: [(1.0, 2, 10, False), (0.0, 2, -1, False)]  # Si ya está en 0.99-1.00
+            }
+            ```
         """
+        #Paso 1 Incialización 
+        correc_s, Y_reg_end = estados_a_actualizar [s]
+        acciones_tap = {0: [-1, 0], 1: [1, 0], 2: [-1, 1]}            #0:bajar (-1),  1:subir (+1), 2:mantener (0),
+        tap_actual = self.get_tap_desde_state(s)
+        acciones_permitidas = acciones_tap[a]
+
         transiciones = []
 
-        # Rama 1 Acción exitosa
-        # 1. Calcula el tap destino  aplicando delta y acotando
-        delta_tap   = self.acciones[a]    # {-1, 0, +1}
+        self.int_simple_simulink()
 
-        tap_actual  = self.get_tap_desde_state(s)
-        tap_ok      = int(np.clip(tap_actual + delta_tap,
-                                    self.pos_min_tap,
-                                    self.pos_max_tap))
-        # Fijo el TAP en Simulink y se simula 
-        self.eng.workspace['tap'] = float(tap_ok)
-        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap_ok')", nargout=0)
-        clk = self.eng.workspace['clk']
+        for accion in acciones_permitidas:
+            nuevo_tap = max(self.pos_min_tap, min(self.pos_max_tap, tap_actual + accion))
+            self.eng.workspace['tap'] = float(nuevo_tap)
+            self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
+            clk = eng.workspace['clk']
+            nuevo_clk = not clk
+            self.eng.workspace['clk'] = nuevo_clk
+            self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
+            time.sleep(self.pausa)
+
+            Y_reg_end_nuevo = self.matObj()
+            next_s = self.next_state(Y_reg_end_nuevo)
+            done = self.is_terminal_state(next_s)
+            rew = self.calculo_reward(Y_reg_end_nuevo)
+
+            transiciones.append((0.5, next_s, rew, done))
+
+        #Restaurar TAP original
+        self.eng.workspace['tap'] = tap_actual
+        self.eng.workspace['tap'] = float(nuevo_tap)
+        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
+        clk = eng.workspace['clk']
         nuevo_clk = not clk
         self.eng.workspace['clk'] = nuevo_clk
         self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
-        #time.sleep(self.pausa)
-        self.int_simple_simulink()
+        time.sleep(self.pausa)
 
-        Y_ok = self.matObj()
-        next_ok = self.next_state(Y_ok)
-        r_ok = self.calculo_reward(Y_ok)
-        done_ok = self.is_terminal_state(Y_ok)
-        transiciones.append((self.prob_satis, next_ok, r_ok, done_ok))
-
-        #---- Rama 2 Acción falla (tap no cambia) ---
-        tap_fail = tap_actual
-        self.eng.workspace['tap'] = float(tap_fail)
-        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap_fail')", nargout=0)
-        clk = self.eng.workspace['clk']
-        nuevo_clk = not clk
-        self.eng.workspace['clk'] = nuevo_clk
-        self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
-        #time.sleep(self.pausa)
-        self.int_simple_simulink()
-
-        Y_fail = self.matObj()
-        next_fail = self.next_state(Y_fail)
-        r_fail = self.calculo_reward(Y_fail)
-        done_fail = self.is_terminal_state(Y_fail)
-
-        transiciones.append((1.0 - self.prob_satis, next_fail, r_fail, done_fail))
-
-        #Verificaicón de la normalización de 'p'
-        total_prob = sum(p for p, *_ in transiciones)
-        assert abs(total_prob - 1.0) < 1e-6, "Las probabilidades no suman 1."
+        print(f"[SYNC] TAP restaurado a {tap_actual} en Simulink tras mat_tran_gen.")
 
         return transiciones
+    #--------------------------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------------------------------------------------
+    def policy_improvement(self):
+        """Evaluado policy_evaluation, el siguiente paso es mejorar la PI a PI', respondiendo la siguiente pregunta:
+            ¿Cómo puedo mejorar mi PI para obtener > R_t?.
+
+            El objetivo es encontrar una mejor PI eligiendo una A_t que lleve a un > R_t usando la EC. BELLMAN
+            Paso 1: REviso todas las A_t posibles en cada S_t
+            Paso 2: Selecciono la A-t que maximice el R_t esperador.
+            Paso 3: Si, la nueva PI' se actualiza de manera que sea mejor o = que la PI.
+        """
+        print('Mejorando la politica')
+        policy_stable = True
+        ac_tomada = []
+
+        for s in range(self.nS):    # Paso 1: Recorro todas los S_t
+            old_a = self.policy[s]
+            action_values = []
+
+            for a in range(self.nA):    # Paso 1: Recorro todas las A_t
+                action_values.append(self.eval_state_action(s,a))
+
+            best_action = np.argmax(action_values)  # Paso 2: Selecciono A_t q max el R_t esperada--> A_(t+1)
+            ac_tomada.append(best_action)
+            print(f"State {s} Valor de la Acción: {action_values}, Mejor Acción: {best_action}")  # Monitor action values
+
+            self.policy[s] = best_action            #Paso 3: Nueva PI' que sea mejor o = que PI.
+
+            #Paso 3: Nueva PI' que sea mejor o = que PI. Si la A_(t+1)-->best_action
+            if old_a != best_action:   #Si nunguna de las A_t mejora PI, entonces PI es estable =True
+                print(f"Política cambio al estado {s}: Acción Anterior: {old_a}, Acción Siguiente: {best_action}")  # Monitor policy changes
+
+                policy_stable = False   #Si la A_t cambia, significa que PI no era estable
+
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+
+        # Gráfico de las acciones tomadas
+        plt.figure(figsize=(10,6))
+        plt.plot(range(len(ac_tomada)), ac_tomada, label='Acciones tomadas')
+        plt.xlabel('Iteraciones')
+        plt.ylabel('Acción')
+        plt.title('Evolución de las Acciones durante policy_improvement')
+        plt.legend()
+
+        filename = f'Acciones_policy_improvement_{timestamp}.png'
+        save_dir = 'mejorPolitica'
+        archivo_acciones = os.path.join(save_dir, filename)
+        image_path = os.path.join(save_dir, filename)
+        plt.savefig(image_path)
+        plt.close() # Si no cierro, la simulación se para
+        print(f"Gráficas guardadas: {archivo_acciones}")
+
+        return policy_stable
+
+    #--------------------------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------------------------------------------------
+    def plot_dynamic_results(self):
+        # Configuración de la figura y los ejes
+        self.fig, (self.ax1, self.ax2) = plt.subplots(2, 1, figsize=(10, 8))
+
+        # Configuración inicial de los gráficos
+        self.ax1.set_title("Regulación de Voltaje en el Tiempo")
+        self.ax1.set_xlabel("Pasos de Tiempo")
+        self.ax1.set_ylabel("Y_reg")
+        self.ax1.grid(True)
+
+        self.ax2.set_title("Posición del TAP en el Tiempo")
+        self.ax2.set_xlabel("Pasos de Tiempo")
+        self.ax2.set_ylabel("Posición TAP")
+        self.ax2.grid(True)
+
+        # Inicializa las líneas (plots vacíos)
+        self.line1, = self.ax1.plot([], [], label="Y_reg_val", color='blue')
+        self.line2, = self.ax2.plot([], [], label="Tap Posición", color='orange')
+        self.ax1.legend()
+        self.ax2.legend()
+
+    # Función de actualización
+    def update(self, frame):
+        self.line1.set_data(range(len(self.Y_reg_val)), self.Y_reg_val)
+        self.line2.set_data(range(len(self.tap_pos_val)), self.tap_pos_val)
+
+        # Ajusta los límites dinámicamente
+        self.ax1.relim()
+        self.ax1.autoscale_view()
+        self.ax2.relim()
+        self.ax2.autoscale_view()
+
+        return self.line1, self.line2
+
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def next_state(self, Y_reg_end):
@@ -539,6 +646,7 @@ class PolicyIterationAgent:
         Si Y_reg_end no está dentro del rango esperado, regresa al estado inicial.
         """
         print(f"Y_reg_end de transición: {Y_reg_end}")
+
         if Y_reg_end is None:
             print("Error: Y_reg_end es 'None', Regresa al estado inicial")
             return 0
@@ -610,42 +718,53 @@ class PolicyIterationAgent:
                 return 31
             else:
                 return 32                         # Estado 32
+
+
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
-    def calculo_reward(self, Y_reg_end_nuevo):
+    def calculo_reward(self, Y_reg_end):
         """_Resumen_: Esta función es directa, revisa si los valores del Vreg('Y_reg') están entre los valores
         máximos y mínimos aceptables para el sistema. Se la llama en eval_state_action.
+
         Cual es el mecanismo para salir del rew = -1, debo buscar la forma de salir de ahi, cómo??? Obligar al TAP que se mueva de ahí para arriba
         Mientras mas se aleje del valor nominal una mayuor penalidad... OJO!!!!!
+
         Comparar con controladores lineales y no lineales, verificar su comportamientoe implemntar en el algoritomo...!!!!
         """
-        print(f"Y_reg_end: {Y_reg_end_nuevo}, Rango requerido: ({self.desired_min}, {self.desired_max})")
 
-        if Y_reg_end_nuevo is None:
+        print(f"Y_reg_end: {Y_reg_end}, Rango requerido: ({self.desired_min}, {self.desired_max})")
+
+        if Y_reg_end is None:
             return -10  # Penalización alta si no se recibe un valor válido
-
-        if 0.992 <= Y_reg_end_nuevo <= 1.002:
+        if 0.99 <= Y_reg_end <= 1.01:
             return 10  # Máxima recompensa dentro del rango óptimo
-        elif 0.97 <= Y_reg_end_nuevo < 0.992 or 1.002 < Y_reg_end_nuevo <= 1.03:
+        elif 0.97 <= Y_reg_end < 0.99 or 1.01 < Y_reg_end <= 1.03:
             return 5  # Recompensa media
-        elif 0.95 <= Y_reg_end_nuevo < 0.97 or 1.03 < Y_reg_end_nuevo <= 1.05:
+        elif 0.95 <= Y_reg_end < 0.97 or 1.03 < Y_reg_end <= 1.05:
             return 2  # Recompensa baja
         else:
             return -5  # Penalización para valores fuera del rango aceptable
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
-    def is_terminal_state(self, Y_reg_end_nuevo):
+    def is_terminal_state(self, next_state):
         """
         Determina si un estado es terminal.
-        """
-        if Y_reg_end_nuevo is None:
-            return True
 
-        return (
-            Y_reg_end_nuevo < 0.95 or
-            Y_reg_end_nuevo > 1.05 or
-            (0.992 <= Y_reg_end_nuevo <= 1.002)
-            )
+            Un estado terminal ocurre en tres situaciones:
+            1. Cuando el voltaje `Y_reg_end` es menor a `0.85` (baja tensión peligrosa).
+            2. Cuando el voltaje `Y_reg_end` es mayor a `1.8` (sobretensión peligrosa).
+            3. Cuando el voltaje está dentro del rango nominal `0.99 ≤ Y_reg_end < 1.01` (objetivo alcanzado).
+
+            Args:
+                next_state (float): Voltaje `Y_reg_end` en p.u.
+
+            Returns:
+                bool: `True` si el estado es terminal, `False` en caso contrario.
+        """
+        #terminal_state = [0, 1, 2, 3, 4, 5, 6, 7] [23, 32] = True
+        #terminal_state = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] [24, 25, 26, 27, 28, 29, 30, 31] = False
+
+        return next_state <= 0.853 or next_state >= 1.075 or (0.992 <= next_state < 1.002)
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def plot_simulation_results(self):
@@ -670,13 +789,57 @@ class PolicyIterationAgent:
 
         filename = f'Resultados_Simulacion_{timestamp}.png'
         save_dir = 'resultados'
-        os.makedirs(save_dir, exist_ok=True)
         image_path = os.path.join(save_dir, filename)
         plt.savefig(image_path)
         plt.close()
         print(f"Imagen guardada en: {image_path}")
-#--------------------------------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------------------------------------------------
+    def run_episodes(self, num_games, Y_reg_init, max_steps):
+        tot_rew = 0
+        action_taken = []
+        timestamp = time.strftime("%Y%m%d-%H%M%S")  # Generate a unique timestamp
+        for game_num in range(num_games):  # Use game_num as part of the filename
+            Y_reg = Y_reg_init
+            state = 0
+            done = False
+            step = 0  # Initialize a step counter
+
+            # Ajusto el epsilon al inicio de cada episodio
+            self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+
+            while not done or step < max_steps:
+                action = self.choose_action(state, self.epsilon)
+                #action = self.policy[state]
+                action_taken.append(action)
+                reward, Y_reg_end = self.eval_state_action(Y_reg, action)  # Execute action, get reward and Y_reg
+                next_state = self.get_next_state_from_simulation_output(Y_reg_end)  # Determine next state
+                done = self.is_terminal_state(next_state)  # Check if the next state is terminal
+                state = next_state  # Update the current state
+                tot_rew += reward  # Accumulate total reward
+                step += 1  # Increment the step counter
+            # If the episode ends due to reaching max_steps
+            if step >= max_steps:
+                print(f"Episodeos han terminado despues de alcanzar {max_steps} steps.")
+            # Generate a unique filename using the game number and timestamp
+            filename = f"Resultado_de_la simulacion_juegos_{game_num}_{timestamp}.png"
+            # Plotting the results for this episode (example plot)
+            plt.figure(figsize=(10, 6))
+            plt.plot(range(len(action_taken)), action_taken, label=f'Actions for game {game_num}')
+            plt.xlabel('Episode Step')
+            plt.ylabel('Acción tomada')
+            plt.title(f'Actions over Time - Game {game_num}')
+            plt.legend()
+
+            filename = f'Actions over Time - Game_{timestamp}.png'
+            save_dir = 'juegos'
+            image_path = os.path.join(save_dir, filename)
+            plt.savefig(image_path)
+            plt.close()  # Close the figure to prevent it from displaying
+
+        print(f'Completado {num_games} episodeos, total reward: {tot_rew}')
+        return action_taken
+
 #--------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
@@ -687,14 +850,15 @@ if __name__ == '__main__':
     eng.load_system('AC_Feeder_Control', nargout = 0)
     eng.run('AC_Feeder_Control_Param_02.m', nargout=0)
 
-    agent = PolicyIterationAgent(
-        nS = 33,
-        nA = 3,
-        gamma = 0.88,
-        eps = 7, # Tolerancia 1e-3
-        eng = eng,
-        host = '127.0.0.1',
-        port = 9096)  # Inicializo el agenteps = 0.01
+    agent = PolicyIterationAgent(nS = 32, nA = 3, gamma = 0.88, eps = 0.01, eng = eng, ip = '127.0.0.1', port = 9096)  # Inicializo el agent
+
+    #agent.plot_dynamic_results()
+
+    # Animación en tiempo real
+    #ani = FuncAnimation(agent.fig, agent.update, interval=500, save_count=200)  # Guarda hasta 200 cuadros
+
+    #plt.tight_layout()
+    #plt.show()
 
     # Ciclo principal
     try:
@@ -707,13 +871,45 @@ if __name__ == '__main__':
         print('Convergencia despues de %i  interaciones --> policy (Politicas)' % (it))
 
         # Llamo a mi función para graficar
-        #agent.plot_simulation_results()
-        print("\nVπ:", agent.V)
-        print("\nπ:", agent.policy)
-        #print("\n La matriz de la Funcion del Valor Vpi: ",agent.V.reshape((1, 10)))
-        #print("\n La matriz de la politica PI es: ", agent.policy.reshape((1, 10)))
+        agent.plot_simulation_results()
+
+        print("\n La matriz de la Funcion del Valor Vpi: ",agent.V.reshape((1, 10)))
+        print("\n La matriz de la politica PI es: ", agent.policy.reshape((1, 10)))
+
+    # Para evaluar con valores randomicos de mi Y_reg
+    # timestamp = time.strftime("%Y%m%d-%H%M%S")  # Genera una estampa de tiempo unica.
+    # max_steps = 10  # Setear el máximo numero de pasos
+    # num_episod = 10
+    # random_Y_reg_init_values = np.random.uniform(0.9, 1.1, 5)
+    # actions_by_Y_reg = []
+    # for Y_reg_init in random_Y_reg_init_values:
+    #     print(f"\nEsta corriendo el episodio con Y_reg_init = {Y_reg_init}")
+    #     actions = agent.run_episodes(num_episod, Y_reg_init=Y_reg_init, max_steps=max_steps)
+    #     actions_by_Y_reg.append(actions)
+
+    # plt.figure(figsize=(10,6))
+    # for i, Y_reg_init in enumerate(random_Y_reg_init_values):
+    #     plt.plot(range(len(actions_by_Y_reg[i])), actions_by_Y_reg[i], label = f'Y_reg_init = {Y_reg_init:.2f}')
+
+    # plt.xlabel('Episode Step')
+    # plt.ylabel('Actions Taken')
+    # plt.title('Y_reg_init vs Actions')
+    # plt.legend()
+
+    # filename = f'Y_reg_vs_Actions__{timestamp}.png'
+    # save_dir = 'final'
+    # image_path = os.path.join(save_dir, filename)
+
+    # plt.close()
+
 
     #Cierro Matlab
     finally:
+
+        #estado_sim = eng.get_param('AC_Feeder_Control', 'SimulationCommand')
+        #if estado_sim in ['running', 'paused', 'compiled']:
         eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'stop')", nargout=0)
+
+        #eng.set_param('AC_Feeder_Control', 'SimulationMode', 'normal', nargout = 0)
+        #eng.set_param('AC_Feeder_Control', 'FastRestart', 'off', nargout=0)
         eng.quit()

@@ -5,7 +5,6 @@ from matplotlib.animation import FuncAnimation
 import matlab.engine
 import numpy as np
 import struct, socket, time
-import random
 import os
 # Me ayuda a garantizar que la lectura del simulink sea correcta
 '''
@@ -27,7 +26,7 @@ Creado 14-01-2025 10:22 p.m.
     -------------------
     | 1.3. V-Functions|
     -------------------
-    Las Value Functions son herramientas fundamentales para evaluar cuán "bueno" es un estado (S_t)
+    Value Functions son herramientas fundamentales para evaluar cuán "bueno" es un estado (S_t)
     o una acción (A_t) dentro de un EVN. Estas funciones (State Value Function (Vs) y Action Value Function Q(s,a),
     miden la recompensa futura a partir de un estado (S_t) o de una acción (A_t).
 
@@ -86,6 +85,9 @@ Creado 14-01-2025 10:22 p.m.
     Aprende una política óptima con def policy_improvement(self):
 
     Interactúa con Simulink.
+        git add .
+        git commit -m "Actualización de scripts y archivos .mat para control Sumlink"
+        git push origin nueva-version
 
 '''
 class PolicyIterationAgent:
@@ -105,8 +107,7 @@ class PolicyIterationAgent:
                  pausa = None,
                  host = '127.0.0.1',
                  port = 9096):
-        """
-        Inicializa el agente de iteración de políticas.
+        """_summary_
 
         Args:
             nS (int): Número de estados posibles.
@@ -114,10 +115,17 @@ class PolicyIterationAgent:
             gamma (float): Factor de descuento.
             eps (float): Tolerancia para la convergencia.
             eng (matlab.engine): Motor de MATLAB para interactuar con Simulink.
-            prob_satis (float): Probabilidad de éxito en la transición de estado.
-            prob_falla (float): Probabilidad de falla en la transición de estado.
-            ip (str): Dirección IP para comunicación UDP.
-            port (int): Puerto para comunicación UDP.
+            prob_satis (float): Probabilidad de éxito en la transición de estado, por defaults a 0.8.
+            pausa (float): Defaults to None.
+            host (str): Dirección IP para comunicación UDP. Defaults to '127.0.0.1'.
+            port (int): Puerto para comunicación UDP. Defaults to 9096.
+        Raises:
+            ValueError: nS debe ser > 0
+            ValueError: nA debe ser > 0
+            ValueError: gamma debe estar entre 0 y 1
+            ValueError: Numero de acciones no soportadas
+        Inicializa el agente de iteración de políticas.
+
         """
         # Validación de parámetros
         if not isinstance(nS, int) or nS <= 0:
@@ -126,17 +134,19 @@ class PolicyIterationAgent:
             raise ValueError(f"nA debe ser un entero positivo, recibido: {nA}")
         if not (0 <= gamma <= 1):
             raise ValueError(f"gamma debe estar entre 0 y 1, recibido: {gamma}")
-        
+
         # Inicialización básica
         self.nS = nS
+
         self.nA = nA                                    #Por las acciones binarias... 0/1 siempre multiplo de 2
-        self.gamma = gamma                              #Factor de descuento
         if self.nA == 3:
-            self.acciones = {0:-1, 1:0, 2: +1}
+            self.acciones = {0: -1, 1: 0, 2: +1}
         elif self.nA == 2:
             self.acciones = {0: -1, 1: +1}
         else:
             raise ValueError("Numero de acciones no soportadas")
+
+        self.gamma = gamma                              #Factor de descuento
         self.eps = eps
         self.eng = eng
 
@@ -147,16 +157,16 @@ class PolicyIterationAgent:
         # Probabilidad de transiciones
         self.prob_satis = prob_satis
 
-
-         # Pausa basada en Simulink o valor por defecto
-        if pausa is None:
+        # Pausa basada en Simulink o valor por defecto
+        self.pausa = pausa
+        if self.pausa is None:
             try:
                 self.pausa = float(self.eng.workspace['T'])
             except Exception:
                 self.pausa = 3.0
         else:
             self.pausa = float(pausa)
-        
+
         # Configuración red y socket
         self.udp_host = host
         self.udp_port = port
@@ -164,6 +174,7 @@ class PolicyIterationAgent:
 
         self.pos_max_tap = 16
         self.pos_min_tap = -16
+
         self.V_nominal = 13.8e3
         self.initial_Y_reg = 1.0                        #Valor asumido inicialmente
         self.V_base_fase = self.V_nominal/np.sqrt(3)
@@ -177,7 +188,6 @@ class PolicyIterationAgent:
         # Sincronizar estado inicial con Simulink
         self.estado_actual = self.sincronizar_estado_inicial()
 
-
         self.last_tap = 0
         self.tap_action = 0                             # Inicializa la variable para almacenar el TAP
         self.tap_initialized = False                    # Variable de control para saber si ya se usó el 0
@@ -185,20 +195,15 @@ class PolicyIterationAgent:
         self.desired_min = 0.95
         self.desired_max = 1.05
 
-        self.fig = None
-        self.ax1 = None
-        self.ax2 = None
-        self.line1 = None
-        self.line2 = None
-
     #--------------------------------------------------------------------------------------------------------------------
     def _init_socket(self):
-        """Crea y retorna un socket UDP configurado."""
+        """
+        Crea y retorna un socket UDP configurado.
+        """
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(1.0)  # timeout ajustable
         sock.bind((self.udp_host, self.udp_port))
         return sock
-    #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def policy_evaluation (self):
         """
@@ -210,7 +215,6 @@ class PolicyIterationAgent:
         iteracion = 0
         valores_delta = []
         start_time =time.time()
-        estados_a_actualizar = {}
 
         while True:
             delta = 0.0
@@ -230,15 +234,14 @@ class PolicyIterationAgent:
             if delta < self.eps:
                 """
                 Paso 3: Condición de convergencia, se repite hasta que cumpla.
-                La convergencia V(s) significa que el agente ha aprendido la calidad de cada estado, dado el control actual del TAP. 
-                El sistema ha alcanzado una represetnación estable de los efecto del contrl del TAP sobre el voltaje en Yreg
+                La convergencia V(s) significa que el agente ha aprendido la calidad de cada estado, dado el control actual del TAP.
+                El sistema ha alcanzado una represetnación estable de los efecto del control del TAP sobre el voltaje en Yreg
                 Las transiciones y r imediatas estan correctamente integradas en el valor esperado de cada estado.
                 """
                 break
         # Tiempo que toma para que la evaluación de la política sea estable
         end_time = time.time()
         print(f"El tiempo total de evaluación es: {(end_time - start_time) / 60.0:.2f} minutes")
-        # Grafico los valores de delta e  iteraciones
         timestamp = time.strftime("%Y%m%d-%H%M%S")
 
         plt.figure()
@@ -252,10 +255,8 @@ class PolicyIterationAgent:
         os.makedirs(save_dir, exist_ok=True)
         image_path = os.path.join(save_dir, filename)
         plt.savefig(image_path)
-
         plt.close()
         print(f"Imagen guardada en: {image_path}")
-    #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def eval_state_action(self, s: int, a: int) -> float:
         """
@@ -263,11 +264,22 @@ class PolicyIterationAgent:
         acción puede derivar en varios desenlaces (éxito, fallo, etc.).
 
         1) Obtiene la lista de transiciones con self.mat_tran_gen(s, a):
-              (p, next_s, r, done)
+        (p, next_s, r, done)
         2) Suma p·(r + γ·V[next_s]) en cada rama
-           • Si 'done' es True, no se añade el término futuro.
-        3) Retorna el valor esperado 'q_sa', que usa policy_evaluation
-           y policy_improvement..
+        • Si 'done' es True, no se añade el término futuro.
+        Args:
+            s (int): _description_
+            a (int): _description_
+
+        Returns:
+            float: EL valor esperado, que usa policy_evaluation y policy_improvemnet.
+
+        Args:
+            s (int): _description_
+            a (int): _description_
+
+        Returns:
+            float: _description_
         """
         return sum(
             p * (r + (0.0 if done else self.gamma * self.V[next_s]))
@@ -275,7 +287,7 @@ class PolicyIterationAgent:
         )
     #--------------------------------------------------------------------------------------------------------------------
     def policy_improvement(self)-> bool:
-            """   
+            """
             Mejora la política π(s) seleccionando en cada estado la acción que maximiza Q(s,a),
             usando un caché temporal para evitar simulaciones redundantes.
             Retorna True si la política ya no cambia (es estable).
@@ -341,30 +353,32 @@ class PolicyIterationAgent:
             # Exploración
             return np.random.randint(self.nA)
 
-        # Explotación: calcular Q(s,a) para cada acción 
+        # Explotación: calcular Q(s,a) para cada acción
         q_values = [self.eval_state_action(s, a) for a in range(self.nA)]
         return int(np.argmax(q_values))
     #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
-    def int_simple_simulink(self):
+    def int_simple_simulink(self, max_wait: float = 2.0) -> None:
         # Verifico el estado de la simulación en SIMULINK
-        sim_status = self.eng.get_param('AC_Feeder_Control', 'SimulationStatus')
-        if sim_status == 'stopped':
+        modelo = 'AC_Feeder_Control'
+        sim_status = self.eng.get_param(modelo, 'SimulationStatus')
+
+        if sim_status in ('stopped', 'compiled', 'terminating'):
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
-            time.sleep(0.5)
-        elif sim_status == 'compiled':
-            self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
-            time.sleep(0.5)
         elif sim_status == 'paused':
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'continue')", nargout=0)
-            time.sleep(0.5)
         elif sim_status == 'running':
             print("La simulación está corriendo.")
+            return
         else:
             print(f"Estado desconocido de Simulink: {sim_status}. Intentando iniciar la simulación...")
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
-            time.sleep(0.5)
 
+        t0 = time.time()
+        while time.time() - t0 < max_wait:
+            sim_status = self.eng.get_param(modelo, 'SimulationStatus')
+            if sim_status == 'running':
+                return
+            time.sleep(0.02)
 #--------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------
     def sincronizar_estado_inicial(self):
@@ -392,7 +406,7 @@ class PolicyIterationAgent:
 #--------------------------------------------------------------------------------------------------------------------
     def get_tap_desde_state(self, s):
         """
-                Convierte un estado `s` en la posición del TAP correspondiente en Simulink.
+            Convierte un estado 's' en la posición del TAP correspondiente en Simulink.
             Se asume que `s=0` corresponde a `TAP=0`, los estados `s=1` a `s=16` aumentan 
             el TAP hasta `+16`, y `s=17` a `s=32` disminuyen el TAP hasta `-16`.
             Args:
@@ -404,45 +418,36 @@ class PolicyIterationAgent:
             return s
         else:
             return -(s - 16)
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------
     def matObj(self):
         # Verificar si el socket ya está creado
         if not hasattr(self, 'udp_socket') or self.udp_socket is None:
             self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.udp_socket.bind((self.host, self.port))
+            self.udp_socket.bind((self.udp_host, self.udp_port)) #es la parte que puede tener problemas 
             self.udp_socket.settimeout(3)  # Timeout para recibir datos
-            print(f"Socket creado y enlazado a {self.host}:{self.port}")
-
+            print(f"Socket creado y enlazado a {self.udp_host}:{self.udp_port}")
         try:
             self.limpiar_buffer()   # Descartar datos viejos
             start_time = time.time()
             data, _ = self.udp_socket.recvfrom(4)
             end_time = time.time()
             print(f"Y_reg_end recibido: {data}, Δt={end_time - start_time:.6f}s")
-
             # Decodificar los datos
             if len(data) != 4:
                 raise ValueError(f"Tamaño inválido: {len(data)} bytes.")
-
             # Desempaquetando el float IEEE754
             vreg_actual = round(struct.unpack('<f', data)[0], 3)
-
             # Validar rango de datos
             if not (-1e3 <= vreg_actual <= 9e3):
                 raise ValueError(f"Valor fuera de rango: {vreg_actual} V")
-
             # Convertir a p.u. y redondear
             Y_reg_end = round(vreg_actual / self.V_base_fase, 3)
             print(f"[matObj] V_reg = {vreg_actual} V → Y_reg_end = {Y_reg_end} p.u.")
             return Y_reg_end
-
         except socket.timeout:
             print("[matObj] Timeout: no se recibieron datos en 3 segundos.")
             return 0.99  # Valor por defecto en caso de error
-
         except OSError as e:
             print(f"[matObj] Error de socket: {e}")
             return 0.99  # Valor por defecto en caso de error
@@ -484,55 +489,54 @@ class PolicyIterationAgent:
         """
         transiciones = []
 
-        # Rama 1 Acción exitosa
-        # 1. Calcula el tap destino  aplicando delta y acotando
-        delta_tap   = self.acciones[a]    # {-1, 0, +1}
+        # 1) Asegurar simulación corriendo ANTES de aplicar cambios
+        self.int_simple_simulink()
 
+        # 2) Preparar TAPs
+        # Calcula el tap destino  aplicando delta y acotando
+        delta_tap   = self.acciones[a]    # {0: -1, 1: 0, 2: +1} o {-1, +1}
         tap_actual  = self.get_tap_desde_state(s)
+
         tap_ok      = int(np.clip(tap_actual + delta_tap,
                                     self.pos_min_tap,
                                     self.pos_max_tap))
-        # Fijo el TAP en Simulink y se simula 
-        self.eng.workspace['tap'] = float(tap_ok)
-        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap_ok')", nargout=0)
-        clk = self.eng.workspace['clk']
-        nuevo_clk = not clk
-        self.eng.workspace['clk'] = nuevo_clk
-        self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
-        #time.sleep(self.pausa)
-        self.int_simple_simulink()
+#--------------------------------------------------------------------------------------------------------------------
+        # Fijo el TAP en Simulink y se simula
+        def _aplicar_rama(prob: float, tap_destino: int):
+            # 2.1) Fijar el TAP vía wokspace-Matlab
+            self.eng.workspace['tap'] = float(tap_destino)
+            self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
 
-        Y_ok = self.matObj()
-        next_ok = self.next_state(Y_ok)
-        r_ok = self.calculo_reward(Y_ok)
-        done_ok = self.is_terminal_state(Y_ok)
-        transiciones.append((self.prob_satis, next_ok, r_ok, done_ok))
+            # 2.2) Toggle de clk (0->1 o 1->), si no existe, inicaliza en False
+            try:
+                clk_actual = bool(self.eng.workspace['clk'])
+            except Exception:
+                clk_actual = False
+                self.eng.workspace['clk'] = clk_actual
+            self.eng.workspace['clk'] = (not clk_actual)
+            self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
 
-        #---- Rama 2 Acción falla (tap no cambia) ---
-        tap_fail = tap_actual
-        self.eng.workspace['tap'] = float(tap_fail)
-        self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap_fail')", nargout=0)
-        clk = self.eng.workspace['clk']
-        nuevo_clk = not clk
-        self.eng.workspace['clk'] = nuevo_clk
-        self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
-        #time.sleep(self.pausa)
-        self.int_simple_simulink()
+            # 2.3) Leer medición (UDP bloqueate con limpiar_buffer interno)
+            Y = self.matObj()
 
-        Y_fail = self.matObj()
-        next_fail = self.next_state(Y_fail)
-        r_fail = self.calculo_reward(Y_fail)
-        done_fail = self.is_terminal_state(Y_fail)
+            # 2.4) Armar transición
+            next_s  = self.next_state(Y)
+            r       = self.calculo_reward(Y)
+            done    = self.is_terminal_state(Y)
+            transiciones.append((prob, next_s, r, done))
+#--------------------------------------------------------------------------------------------------------------------
+        # Rama ÉXITO (aplicando delta)
+        _aplicar_rama(self.prob_satis, tap_ok)
 
-        transiciones.append((1.0 - self.prob_satis, next_fail, r_fail, done_fail))
+        # Rama FALLA (amantener tap)
+        _aplicar_rama(1.0 - self.prob_satis, tap_actual)
 
         #Verificaicón de la normalización de 'p'
         total_prob = sum(p for p, *_ in transiciones)
         assert abs(total_prob - 1.0) < 1e-6, "Las probabilidades no suman 1."
 
         return transiciones
-    #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------
     def next_state(self, Y_reg_end):
         """
         Determina el próximo estado basado en el valor de Y_reg_end.
@@ -624,9 +628,9 @@ class PolicyIterationAgent:
         if Y_reg_end_nuevo is None:
             return -10  # Penalización alta si no se recibe un valor válido
 
-        if 0.992 <= Y_reg_end_nuevo <= 1.002:
+        if 0.992 <= Y_reg_end_nuevo < 1.002:
             return 10  # Máxima recompensa dentro del rango óptimo
-        elif 0.97 <= Y_reg_end_nuevo < 0.992 or 1.002 < Y_reg_end_nuevo <= 1.03:
+        elif 0.97 <= Y_reg_end_nuevo < 0.992 or 1.002 <= Y_reg_end_nuevo <= 1.03:
             return 5  # Recompensa media
         elif 0.95 <= Y_reg_end_nuevo < 0.97 or 1.03 < Y_reg_end_nuevo <= 1.05:
             return 2  # Recompensa baja
@@ -644,7 +648,7 @@ class PolicyIterationAgent:
         return (
             Y_reg_end_nuevo < 0.95 or
             Y_reg_end_nuevo > 1.05 or
-            (0.992 <= Y_reg_end_nuevo <= 1.002)
+            (0.992 <= Y_reg_end_nuevo < 1.002)
             )
     #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------

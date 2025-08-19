@@ -1,0 +1,4 @@
+#ifndef RTW_HEADER_AC_Feeder_Control_acc_types_h_
+#define RTW_HEADER_AC_Feeder_Control_acc_types_h_
+typedef struct P_AC_Feeder_Control_T_ P_AC_Feeder_Control_T ;
+#endif
