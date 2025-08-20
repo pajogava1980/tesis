@@ -113,7 +113,7 @@ class PolicyIterationAgent:
         """_summary_
 
         Args:
-            nS (int): Número de estados posibles.
+            nS (int): Número de estados posibles
             nA (int): Número de acciones disponibles.
             gamma (float): Factor de descuento.
             eps (float): Tolerancia para la convergencia.
