@@ -108,6 +108,7 @@ class PolicyIterationAgent:
                  prob_satis = 0.8,
                  pausa = None,
                  host = '127.0.0.1',
+                 udp_packet_size: int = 4,
                  port = 9096):
         """_summary_
 
@@ -152,6 +153,7 @@ class PolicyIterationAgent:
         self.eps = eps
         self.eng = eng
 
+        self.udp_packet_size = udp_packet_size
         # Estados de Valor y Politica
         self.V = np.zeros(nS)
         self.policy = np.zeros(nS, dtype=int)
@@ -421,7 +423,7 @@ class PolicyIterationAgent:
         else:
             return -(s - 16)
 #--------------------------------------------------------------------------------------------------------------------
-    def matObj(self):
+    def matObj(self, drain: bool = False, max_wait: float = None):
         # Verificar si el socket ya está creado
         if not hasattr(self, 'udp_socket') or self.udp_socket is None:
             self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -429,46 +431,75 @@ class PolicyIterationAgent:
             self.udp_socket.bind((self.udp_host, self.udp_port)) #es la parte que puede tener problemas 
             self.udp_socket.settimeout(3)  # Timeout para recibir datos
             print(f"Socket creado y enlazado a {self.udp_host}:{self.udp_port}")
-        try:
-            self.limpiar_buffer()   # Descartar datos viejos
-            start_time = time.time()
-            data, _ = self.udp_socket.recvfrom(4)
-            end_time = time.time()
-            print(f"Y_reg_end recibido: {data}, Δt={end_time - start_time:.6f}s")
-            # Decodificar los datos
-            if len(data) != 4:
-                raise ValueError(f"Tamaño inválido: {len(data)} bytes.")
-            # Desempaquetando el float IEEE754
-            vreg_actual = round(struct.unpack('<f', data)[0], 3)
-            # Validar rango de datos
-            if not (-1e3 <= vreg_actual <= 9e3):
-                raise ValueError(f"Valor fuera de rango: {vreg_actual} V")
-            # Convertir a p.u. y redondear
-            Y_reg_end = round(vreg_actual / self.V_base_fase, 3)
-            print(f"[matObj] V_reg = {vreg_actual} V → Y_reg_end = {Y_reg_end} p.u.")
-            return Y_reg_end
-        except socket.timeout:
-            print("[matObj] Timeout: no se recibieron datos en 3 segundos.")
-            return 0.99  # Valor por defecto en caso de error
-        except OSError as e:
-            print(f"[matObj] Error de socket: {e}")
-            return 0.99  # Valor por defecto en caso de error
+
+        if drain:
+            self.limpiar_buffer()
+
+        # Esperar de forma consistente
+        if max_wait is None:
+            max_wait = self.udp_socket.gettimeout() or 3.0
+
+        deadline = time.time() + max_wait
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                print("[matObj] Timeout: no se recibieron datos en ventana de espera.")
+                return 0.99
+            self.udp_socket.settimeout(remaining)
+            try:
+                start_time = time.time()
+                data, _ = self.udp_socket.recvfrom(self.udp_packet_size)
+                end_time = time.time()
+                print(f"Y_reg_end recibido: {data}, Δt={end_time - start_time:.6f}s")
+
+                if len(data) != 4:
+                    raise ValueError(f"Tamaño inválido: {len(data)} bytes.")
+
+                vreg_actual = round(struct.unpack('<f', data)[0], 3)
+
+                if not (-1e3 <= vreg_actual <= 9e3):
+                    raise ValueError(f"Valor fuera de rango: {vreg_actual} V")
+
+                # Convertir a p.u. y redondear
+                Y_reg_end = round(vreg_actual / self.V_base_fase, 3)
+                print(f"[matObj] V_reg = {vreg_actual} V → Y_reg_end = {Y_reg_end} p.u.")
+                return Y_reg_end
+
+            except socket.timeout:
+                print("[matObj] Timeout: no se recibieron datos en 3 segundos.")
+                return 0.99  # Valor por defecto en caso de error
+            except OSError as e:
+                print(f"[matObj] Error de socket: {e}")
+                return 0.99  # Valor por defecto en caso de error
+
+
     #--------------------------------------------------------------------------------------------------------------------
-    def limpiar_buffer(self):
+    def limpiar_buffer(self, max_drain: int = 100):
         """
         Limpia el buffer del socket UDP para evitar datos residuales antes de leer nuevos datos.
         """
         # Limpiar el buffer del socket
-        intento =0
-        while True:
-            try:
-                self.udp_socket.recvfrom(4)
-                print(f"Intento {intento + 1}: Dato eliminado del buffer.")
-                intento += 1
-            except socket.timeout:
-                print(f"Buffer vacío después de {intento} intentos.")
-                break
-            #intento += 1
+        intento = 0
+
+        try:
+            cur_to = self.udp_socket.gettimeout()
+        except Exception:
+            cur_to = None
+
+        self.udp_socket.setblocking(False)
+        try:
+            for _ in range(max_drain):
+                try:
+                    self.udp_socket.recvfrom(self.udp_packet_size)
+                    intento += 1
+                except (BlockingIOError, InterruptedError, OSError):
+                    break
+        finally:
+            self.udp_socket.setblocking(True)
+            if cur_to is not None:
+                self.udp_socket.settimeout(cur_to)
+        if intento:
+            print(f"[UDP] Buffer drenado: {intento} paquetes descartados.")
     # ------------------------------------------------------------------
     # Paso 5 · Generador de transiciones estocásticas P(s,a)
     # ------------------------------------------------------------------
@@ -505,27 +536,31 @@ class PolicyIterationAgent:
 #--------------------------------------------------------------------------------------------------------------------
         # Fijo el TAP en Simulink y se simula
         def _aplicar_rama(prob: float, tap_destino: int):
+            self.limpiar_buffer()
+
             # 2.1) Fijar el TAP vía wokspace-Matlab
             self.eng.workspace['tap'] = float(tap_destino)
             self.eng.eval("set_param('AC_Feeder_Control/Tap','Value','tap')", nargout=0)
 
-            # 2.2) Toggle de clk (0->1 o 1->), si no existe, inicaliza en False
+            # 2.2) Toggle de clk (0<->), si no existe, inicaliza en False
             try:
                 clk_actual = bool(self.eng.workspace['clk'])
             except Exception:
                 clk_actual = False
                 self.eng.workspace['clk'] = clk_actual
+
             self.eng.workspace['clk'] = (not clk_actual)
             self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
 
             # 2.3) Leer medición (UDP bloqueate con limpiar_buffer interno)
-            Y = self.matObj()
+            Y = self.matObj(drain = False, max_wait = 3.0)
 
             # 2.4) Armar transición
-            next_s  = self.next_state(Y)
+            n_s  = self.next_state(Y)
             r       = self.calculo_reward(Y)
             done    = self.is_terminal_state(Y)
-            transiciones.append((prob, next_s, r, done))
+
+            transiciones.append((prob, n_s, r, done))
 #--------------------------------------------------------------------------------------------------------------------
         # Rama ÉXITO (aplicando delta)
         _aplicar_rama(self.prob_satis, tap_ok)
@@ -617,7 +652,6 @@ class PolicyIterationAgent:
             else:
                 return 32                         # Estado 32
     #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
     def calculo_reward(self, Y_reg_end_nuevo):
         """_Resumen_: Esta función es directa, revisa si los valores del Vreg('Y_reg') están entre los valores
         máximos y mínimos aceptables para el sistema. Se la llama en eval_state_action.
@@ -639,7 +673,6 @@ class PolicyIterationAgent:
         else:
             return -5  # Penalización para valores fuera del rango aceptable
     #--------------------------------------------------------------------------------------------------------------------
-    #--------------------------------------------------------------------------------------------------------------------
     def is_terminal_state(self, Y_reg_end_nuevo):
         """
         Determina si un estado es terminal.
@@ -652,7 +685,6 @@ class PolicyIterationAgent:
             Y_reg_end_nuevo > 1.05 or
             (0.992 <= Y_reg_end_nuevo < 1.002)
             )
-    #--------------------------------------------------------------------------------------------------------------------
     #--------------------------------------------------------------------------------------------------------------------
     def plot_simulation_results(self):
         timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -682,9 +714,6 @@ class PolicyIterationAgent:
         plt.close()
         print(f"Imagen guardada en: {image_path}")
 #--------------------------------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------------------------------
-#--------------------------------------------------------------------------------------------------------------------
 if __name__ == '__main__':
     eng = matlab.engine.start_matlab()   # Inicio el motor de Matlab
     eng = matlab.engine.connect_matlab() # Quita el # de la ventana de MATLAB si ya estamos compartiendo Matlab
@@ -700,7 +729,8 @@ if __name__ == '__main__':
         eps = 7, # Tolerancia 1e-3
         eng = eng,
         host = '127.0.0.1',
-        port = 9096)  # Inicializo el agenteps = 0.01
+        port = 9096
+        )
 
     # Ciclo principal
     try:
@@ -711,13 +741,8 @@ if __name__ == '__main__':
             policy_stable = agent.policy_improvement()
             it +=1
         print('Convergencia despues de %i  interaciones --> policy (Politicas)' % (it))
-
-        # Llamo a mi función para graficar
-        #agent.plot_simulation_results()
         print("\nVπ:", agent.V)
         print("\nπ:", agent.policy)
-        #print("\n La matriz de la Funcion del Valor Vpi: ",agent.V.reshape((1, 10)))
-        #print("\n La matriz de la politica PI es: ", agent.policy.reshape((1, 10)))
 
     #Cierro Matlab
     finally:
