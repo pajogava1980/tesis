@@ -152,6 +152,10 @@ class PolicyIterationAgent:
         self.gamma = gamma                              #Factor de descuento
         self.eps = eps
         self.eng = eng
+        
+        self.Ts_step   = getattr(self, 'Ts_step', 0.02)   # sample time del modelo
+        self.tx_guard  = getattr(self, 'tx_guard', 0.005) # 5 ms de guarda post-toggle
+        self.rx_wait   = getattr(self, 'rx_wait', 1.0)    # espera máx. lectura UDP
 
         self.udp_packet_size = udp_packet_size
         # Estados de Valor y Politica
@@ -361,10 +365,10 @@ class PolicyIterationAgent:
         q_values = [self.eval_state_action(s, a) for a in range(self.nA)]
         return int(np.argmax(q_values))
     #--------------------------------------------------------------------------------------------------------------------
-    def int_simple_simulink(self, max_wait: float = 2.0) -> None:
+    def int_simple_simulink(self, Ts: float = 0.02, max_wait: float = 2.0) -> None:
         # Verifico el estado de la simulación en SIMULINK
-        modelo = 'AC_Feeder_Control'
-        sim_status = self.eng.get_param(modelo, 'SimulationStatus')
+        mdl = 'AC_Feeder_Control'
+        sim_status = self.eng.get_param(mdl, 'SimulationStatus')
 
         if sim_status in ('stopped', 'compiled', 'terminating'):
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
@@ -377,12 +381,19 @@ class PolicyIterationAgent:
             print(f"Estado desconocido de Simulink: {sim_status}. Intentando iniciar la simulación...")
             self.eng.eval("set_param('AC_Feeder_Control', 'SimulationCommand', 'start')", nargout=0)
 
-        t0 = time.time()
-        while time.time() - t0 < max_wait:
-            sim_status = self.eng.get_param(modelo, 'SimulationStatus')
-            if sim_status == 'running':
+        t0 = float(self.eng.get_param(mdl, 'SimulationStatus'))
+        t1 = t0 + Ts
+        self.eng.get_param(mdl, 'StopTime', str(t1), nargout = 0)
+        self.eng.eval("set_param('AC_Feeder_Control','SimulationCommand','continue')", nargout=0)
+
+
+        t_start = time.time()
+        while time.time() - t_start < max_wait:
+            t_sim = float(self.eng.get_param(mdl, 'SimulationTime'))
+            if t_sim >= t1:
                 return
-            time.sleep(0.02)
+            time.sleep(0.005)
+        print("[int_simple_simulink_step] Aviso: no alcanzó t1 dentro de max_wait.")
 #--------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------
     def sincronizar_estado_inicial(self):
@@ -423,22 +434,20 @@ class PolicyIterationAgent:
         else:
             return -(s - 16)
 #--------------------------------------------------------------------------------------------------------------------
-    def matObj(self, drain: bool = False, max_wait: float = None):
+    def matObj(self, drain: bool = False, max_wait: float | None = None):
         # Verificar si el socket ya está creado
-        if not hasattr(self, 'udp_socket') or self.udp_socket is None:
-            self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.udp_socket.bind((self.udp_host, self.udp_port)) #es la parte que puede tener problemas 
-            self.udp_socket.settimeout(3)  # Timeout para recibir datos
-            print(f"Socket creado y enlazado a {self.udp_host}:{self.udp_port}")
+        #if not hasattr(self, 'udp_socket') or self.udp_socket is None:
+        #    self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        #    self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #    self.udp_socket.bind((self.udp_host, self.udp_port)) #es la parte que puede tener problemas 
+        #    self.udp_socket.settimeout(3)  # Timeout para recibir datos
+        #   print(f"Socket creado y enlazado a {self.udp_host}:{self.udp_port}")
 
         if drain:
             self.limpiar_buffer()
-
         # Esperar de forma consistente
         if max_wait is None:
-            max_wait = self.udp_socket.gettimeout() or 3.0
-
+            max_wait = self.rx_wait
         deadline = time.time() + max_wait
         while True:
             remaining = deadline - time.time()
@@ -447,44 +456,34 @@ class PolicyIterationAgent:
                 return 0.99
             self.udp_socket.settimeout(remaining)
             try:
-                start_time = time.time()
                 data, _ = self.udp_socket.recvfrom(self.udp_packet_size)
-                end_time = time.time()
-                print(f"Y_reg_end recibido: {data}, Δt={end_time - start_time:.6f}s")
+                if len(data) < 4:
+                    continue
 
-                if len(data) != 4:
-                    raise ValueError(f"Tamaño inválido: {len(data)} bytes.")
-
-                vreg_actual = round(struct.unpack('<f', data)[0], 3)
-
-                if not (-1e3 <= vreg_actual <= 9e3):
-                    raise ValueError(f"Valor fuera de rango: {vreg_actual} V")
+                vreg = round(struct.unpack('<f', data)[0], 3)
 
                 # Convertir a p.u. y redondear
-                Y_reg_end = round(vreg_actual / self.V_base_fase, 3)
-                print(f"[matObj] V_reg = {vreg_actual} V → Y_reg_end = {Y_reg_end} p.u.")
-                return Y_reg_end
-
+                Y = round(vreg / self.V_base_fase, 3)
+                print(f"[matObj] V_reg = {vreg} V → Y_reg_end = {Y} p.u.")
+                return Y
             except socket.timeout:
-                print("[matObj] Timeout: no se recibieron datos en 3 segundos.")
-                return 0.99  # Valor por defecto en caso de error
+               continue
             except OSError as e:
                 print(f"[matObj] Error de socket: {e}")
                 return 0.99  # Valor por defecto en caso de error
-
-
     #--------------------------------------------------------------------------------------------------------------------
-    def limpiar_buffer(self, max_drain: int = 100):
+    def limpiar_buffer(self, max_drain: int = 200):
         """
         Limpia el buffer del socket UDP para evitar datos residuales antes de leer nuevos datos.
         """
         # Limpiar el buffer del socket
         intento = 0
+        curt_to = None
 
         try:
             cur_to = self.udp_socket.gettimeout()
         except Exception:
-            cur_to = None
+            pass
 
         self.udp_socket.setblocking(False)
         try:
@@ -548,12 +547,12 @@ class PolicyIterationAgent:
             except Exception:
                 clk_actual = False
                 self.eng.workspace['clk'] = clk_actual
-
             self.eng.workspace['clk'] = (not clk_actual)
             self.eng.eval("set_param('AC_Feeder_Control/Clk','Value','clk')", nargout=0)
-
+            self.int_simple_simulink_step(self.Ts_step)
+            time.sleep(self.tx_guard)  # 1–5 ms suele bastar
             # 2.3) Leer medición (UDP bloqueate con limpiar_buffer interno)
-            Y = self.matObj(drain = False, max_wait = 3.0)
+            Y = self.matObj(drain = False, max_wait = self.rx_wait)
 
             # 2.4) Armar transición
             n_s  = self.next_state(Y)
