@@ -149,16 +149,17 @@ class PolicyIterationAgent:
         else:
             raise ValueError("Numero de acciones no soportadas")
 
-        self.gamma = gamma                              #Factor de descuento
+        self.gamma = gamma                                #Factor de descuento
         self.eps = eps
         self.eng = eng
-        
+
         self.Ts_step   = getattr(self, 'Ts_step', 0.02)   # sample time del modelo
         self.tx_guard  = getattr(self, 'tx_guard', 0.005) # 5 ms de guarda post-toggle
         self.rx_wait   = getattr(self, 'rx_wait', 1.0)    # espera máx. lectura UDP
 
         self.udp_packet_size = udp_packet_size
-        # Estados de Valor y Politica
+
+       # Estados de Valor y Politica
         self.V = np.zeros(nS)
         self.policy = np.zeros(nS, dtype=int)
 
@@ -275,19 +276,9 @@ class PolicyIterationAgent:
         (p, next_s, r, done)
         2) Suma p·(r + γ·V[next_s]) en cada rama
         • Si 'done' es True, no se añade el término futuro.
-        Args:
-            s (int): _description_
-            a (int): _description_
-
         Returns:
             float: EL valor esperado, que usa policy_evaluation y policy_improvemnet.
 
-        Args:
-            s (int): _description_
-            a (int): _description_
-
-        Returns:
-            float: _description_
         """
         return sum(
             p * (r + (0.0 if done else self.gamma * self.V[next_s]))
@@ -295,58 +286,58 @@ class PolicyIterationAgent:
         )
     #--------------------------------------------------------------------------------------------------------------------
     def policy_improvement(self)-> bool:
-            """
+        """_summary_:
             Mejora la política π(s) seleccionando en cada estado la acción que maximiza Q(s,a),
             usando un caché temporal para evitar simulaciones redundantes.
             Retorna True si la política ya no cambia (es estable).
-            """
-            print('Mejorando la politica')
-            policy_stable = True
-            ac_tomada = []
-            q_cache = {} # (s,a) -> Q(s,a), evita llamdas repetidas a Simulink
+        """
+        print('Mejorando la politica')
+        policy_stable = True
+        ac_tomada = []
+        q_cache = {} # (s,a) -> Q(s,a), evita llamdas repetidas a Simulink
 
-            for s in range(self.nS):    # Paso 1: Recorro todas los S_t
-                old_a = self.policy[s]
-                q_values = []
+        for s in range(self.nS):    # Paso 1: Recorro todas los S_t
+            old_a = self.policy[s]
+            q_values = []
 
-                for a in range(self.nA):
-                    if (s, a) not in q_cache:
-                        q_sa = self.eval_state_action(s, a)
-                        q_cache[(s, a)] = q_sa
-                    q_values.append(q_cache[(s, a)])
+            for a in range(self.nA):
+                if (s, a) not in q_cache:
+                    q_sa = self.eval_state_action(s, a)
+                    q_cache[(s, a)] = q_sa
+                q_values.append(q_cache[(s, a)])
 
-                #Calculo Q(s,a) para todas las acciones
-                #q_values = [self.eval_state_action(s,a) for a in range(self.nA)]
-                best_action = int(np.argmax(q_values))
-                ac_tomada.append(best_action)
+            #Calculo Q(s,a) para todas las acciones
+            #q_values = [self.eval_state_action(s,a) for a in range(self.nA)]
+            best_action = int(np.argmax(q_values))
+            ac_tomada.append(best_action)
 
-                # Actualizar la política
-                self.policy[s] = best_action
-                #Paso 3: Nueva PI' que sea mejor o = que PI. Si la A_(t+1)-->best_action
-                if best_action != old_a:   #Si nunguna de las A_t mejora PI, entonces PI es estable =True
-                    print(f"[PI]  Estado {s:2d}:  acción {old_a} → {best_action}")
-                    policy_stable = False   #Si la A_t cambia, significa que PI no era estable
+            # Actualizar la política
+            self.policy[s] = best_action
+            #Paso 3: Nueva PI' que sea mejor o = que PI. Si la A_(t+1)-->best_action
+            if best_action != old_a:   #Si nunguna de las A_t mejora PI, entonces PI es estable =True
+                print(f"[PI]  Estado {s:2d}:  acción {old_a} → {best_action}")
+                policy_stable = False   #Si la A_t cambia, significa que PI no era estable
 
-            timestamp = time.strftime("%Y%m%d-%H%M%S")
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
 
-            # Gráfico de las acciones tomadas
-            plt.figure(figsize=(10,6))
-            plt.plot(range(len(ac_tomada)), ac_tomada, label='Acciones tomadas')
-            plt.xlabel('Estados')
-            plt.ylabel('Acción')
-            plt.title('Evolución de las Acciones durante policy_improvement')
-            plt.legend()
+        # Gráfico de las acciones tomadas
+        plt.figure(figsize=(10,6))
+        plt.plot(range(len(ac_tomada)), ac_tomada, label='Acciones tomadas')
+        plt.xlabel('Estados')
+        plt.ylabel('Acción')
+        plt.title('Evolución de las Acciones durante policy_improvement')
+        plt.legend()
 
-            filename = f'Acciones_policy_improvement_{timestamp}.png'
-            save_dir = 'mejorPolitica'
-            os.makedirs(save_dir, exist_ok=True)
-            archivo_acciones = os.path.join(save_dir, filename)
-            image_path = os.path.join(save_dir, filename)
-            plt.savefig(image_path)
-            plt.close() # Si no cierro, la simulación se para
-            print(f"Gráficas guardadas: {archivo_acciones}")
+        filename = f'Acciones_policy_improvement_{timestamp}.png'
+        save_dir = 'mejorPolitica'
+        os.makedirs(save_dir, exist_ok=True)
+        archivo_acciones = os.path.join(save_dir, filename)
+        image_path = os.path.join(save_dir, filename)
+        plt.savefig(image_path)
+        plt.close() # Si no cierro, la simulación se para
+        print(f"Gráficas guardadas: {archivo_acciones}")
 
-            return policy_stable
+        return policy_stable
     #--------------------------------------------------------------------------------------------------------------------
     def choose_action (self, s: int, epsilon: float = 0.05)->int:
         """
@@ -385,7 +376,6 @@ class PolicyIterationAgent:
         t1 = t0 + Ts
         self.eng.get_param(mdl, 'StopTime', str(t1), nargout = 0)
         self.eng.eval("set_param('AC_Feeder_Control','SimulationCommand','continue')", nargout=0)
-
 
         t_start = time.time()
         while time.time() - t_start < max_wait:
